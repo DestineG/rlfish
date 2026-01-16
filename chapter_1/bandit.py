@@ -2,33 +2,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-class NonStatBandit:
-    def __init__(self, arms=10, change_interval=100):
+class Bandit:
+    def __init__(self, arms=10):
         self.arms = arms
-        self.change_interval = change_interval
         self.rates = np.random.rand(arms)
-        self.step_count = 0
+        print(f"Initialized bandit with rates: {self.rates}")
     
     def play(self, arm=None):
-        self.step_count += 1
-        # 环境内部状态定期变化
-        if self.step_count % self.change_interval == 0:
-            self.rates += np.random.normal(0, 0.1, size=self.arms)
-            reset_mask = (self.rates < 0) | (self.rates > 1)
-            self.rates[reset_mask] = np.random.rand(np.sum(reset_mask))
         if arm == None: arm = np.random.randint(self.arms)
         if arm < 0 or arm >= len(self.rates): raise ValueError("Invalid arm index")
         reward = 1 if np.random.rand() < self.rates[arm] else 0
         return arm, reward
 
 class Agent:
-    def __init__(self, epsilon=0.1, action_size=10, alpha=0.1):
+    def __init__(self, epsilon=0.1, action_size=10):
         self.epsilon = epsilon
         self.action_size = action_size
-        self.alpha = alpha
         self.Qs = np.zeros(action_size)
         self.ns = np.zeros(action_size)
-
+    
     def get_action(self):
         if np.random.rand() < self.epsilon:
             return np.random.randint(self.action_size)
@@ -37,17 +29,14 @@ class Agent:
     
     def update(self, action, reward):
         self.ns[action] += 1
-        self.Qs[action] += (reward - self.Qs[action]) * self.alpha
+        self.Qs[action] += (reward - self.Qs[action]) / self.ns[action]
 
 if __name__ == "__main__":
     arms = 5
-    # 非静态环境初始化，此处的环境会随着时间变化，但在这个场景下不会告知智能体，
-    # 所以对于智能体来说仍然是无状态的，所以可以共享环境
-    # 注：虽然复用 bandit 实例，但其随机演化在统计上
-    # 等价于为每个 epsilon 使用一个独立的非稳态 bandit
-    bandit = NonStatBandit(arms=arms, change_interval=100)
+    # 无状态环境初始化
+    bandit = Bandit(arms=arms)
     runs = 200
-    steps = 10000
+    steps = 1000
     epsilons = [0.0, 0.05, 0.2, 0.5]
     total_rates = np.zeros((len(epsilons), runs, steps))
 
