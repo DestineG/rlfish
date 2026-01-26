@@ -155,33 +155,32 @@ class GridWorld:
         plt.show()
 
 
-def value_iteration(env, gama=0.9, theta=1e-6):
-    V = defaultdict(lambda: 0.0)
+def eval_onestep(env, V, pi, gama=0.9):
+    new_V = {}
 
+    for state in env.states():
+        # 终止状态：价值定义为 0
+        if state == env.goal_states:
+            new_V[state] = 0.0
+            continue
+
+        v = 0.0
+        for action, action_prob in pi[state].items():
+            next_s = env.next_state(state, action)
+            r = env.reward(next_s)
+            v += action_prob * (r + gama * V[next_s])
+
+        new_V[state] = v
+
+    return new_V
+
+def policy_eval(env, V, pi, gama=0.9, theta=1e-6):
     while True:
         old_V = V.copy()
-        delta = 0.0
-
-        for state in env.states():
-            # 终止状态：价值定义为 0
-            if state == env.goal_states:
-                V[state] = 0.0
-                continue
-
-            action_values = []
-            for action in env.actions():
-                next_s = env.next_state(state, action)
-                r = env.reward(next_s)
-                action_value = r + gama * old_V[next_s]
-                action_values.append(action_value)
-
-            # 选择最大动作价值作为状态价值
-            V[state] = max(action_values)
-            delta = max(delta, abs(old_V[state] - V[state]))
-
+        V = eval_onestep(env, V, pi, gama)
+        delta = max(abs(old_V[s] - V[s]) for s in env.states())
         if delta < theta:
             break
-
     return V
 
 def argmax_dict(d):
@@ -209,8 +208,25 @@ def greedy_policy(env, V, gama=0.9):
 
     return pi
 
+def policy_iteration(env, gama=0.9, theta=1e-6):
+    # 初始化价值函数 V 和策略 pi
+    V = defaultdict(lambda: 0.0)
+    pi = defaultdict(lambda: {a: 1 / len(env.actions()) for a in env.actions()})
+
+    while True:
+        # 策略评估
+        V = policy_eval(env, V, pi, gama, theta)
+        # 策略改进
+        new_pi = greedy_policy(env, V, gama)
+
+        # 检查策略是否稳定 策略动作概率相等
+        if all(new_pi[s] == pi[s] for s in env.states()):
+            break
+        pi = new_pi
+
+    return pi
+
 if __name__ == "__main__":
     env = GridWorld()
-    V = value_iteration(env)
-    pi = greedy_policy(env, V)
+    pi = policy_iteration(env)
     env.render_q(pi)

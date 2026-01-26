@@ -8,7 +8,7 @@ class GridWorld:
         self.action_vector = {0: (-1, 0), 1: (1, 0), 2: (0, -1), 3: (0, 1)}
         self.action_meaning = {0: "Up", 1: "Down", 2: "Left", 3: "Right"}
         self.reward_map = np.array(
-            [[0, 0, 0, 1],
+            [[0, 0, 0, 2],
              [0, None, 0, -1],
              [0, 0, 0, 0]]
         )
@@ -175,7 +175,7 @@ def value_iteration(env, gama=0.9, theta=1e-6):
                 action_value = r + gama * old_V[next_s]
                 action_values.append(action_value)
 
-            # 选择最大动作价值作为状态价值
+            # 选择最大动作价值作为状态价值(隐含策略为贪婪策略)
             V[state] = max(action_values)
             delta = max(delta, abs(old_V[state] - V[state]))
 
