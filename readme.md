@@ -469,6 +469,8 @@ def sarsa_actionValue_eval(Q, alpha=0.1, gamma=0.9, memory_deque):
 * **同策略方法（On-policy）**：在实际行动中采用的策略（actionPolicy）与学习更新的策略（targetPolicy）相同，例如 SARSA。
 * **异策略方法（Off-policy）**：行为策略与目标策略不同，例如 Q-learning；重要性采样和max算子是实现异策略学习的两种常用方法。
 
+**自身从实践中学习就是同策略学习，而通过观察他人行为而不参与其中则是异策略学习。**
+
 ## 概率模型 vs. 样本模型
 
 概率模型是显式的保存策略的概率分布，使用时直接根据概率分布进行采样选择动作。
