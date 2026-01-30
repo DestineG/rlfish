@@ -462,56 +462,12 @@ def sarsa_actionValue_eval(Q, alpha=0.1, gamma=0.9, memory_deque):
 
 ---
 
-## 同策略方法 vs. 异策略方法
+## 同策略学习 vs. 异策略学习
 
 同策略方法（On-policy methods）和异策略方法（Off-policy methods）是强化学习中的两种不同学习策略。
 
-* **同策略方法（On-policy）**：在实际行动中采用的策略（行为策略）与学习更新的策略（目标策略）相同。例如 SARSA。
-* **异策略方法（Off-policy）**：行为策略与目标策略不同，通常使用贪婪策略更新。例如 Q-learning。
-
-**举例**
-同策略方法：行为策略采用 ε-贪婪策略，next_Q[next_state][next_action]存储的是 ε-贪婪策略构造结果，更新策略时使用该构造结果，表示更新Q是遵循了行为策略，**也就是更新时采用采样到的动作**。
-
-异策略方法：行为策略采用 ε-贪婪策略，next_Q[next_state][next_action]存储的是 ε-贪婪策略构造结果，更新策略时使用的是对next_Q[next_state]取max的值，表示更新Q并没有遵循行为策略，**也就是更新时采用最优动作**。
-
-**更新Q值使用采样到的动作就是同策略方法，更新Q值使用最优动作就是异策略方法。**
-
-```python
-def get_action(self, actionPolicy, state):
-    # 行为策略
-    actions = list(self.actionPolicy[state].keys())
-    probabilities = list(actionPolicy[state].values())
-    action = np.random.choice(actions, p=probabilities)
-    return action
-
-def greedy_probs(self, Q, state, epsilon=0.1):
-    # ε-贪婪策略生成
-    actions_value = Q[state]
-    max_action = max(actions_value, key=actions_value.get)
-    policy = {}
-    for action in actions_value.keys():
-        if action == max_action:
-            policy[action] = 1 - epsilon + (epsilon / len(actions_value))
-        else:
-            policy[action] = epsilon / len(actions_value)
-    return policy
-
-def actionValue_eval_onPolicy(self, state, action, reward, next_state, next_action):
-    # Q更新：直接使用存储Q值
-    next_Q = self.Q[next_state][next_action] if next_state in self.Q and next_action in self.Q[next_state] else 0
-    self.Q[state][action] += self.alpha * (reward + self.gamma * next_Q - self.Q[state][action])
-    
-    self.actionPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
-    self.targetPolicy[state] = self.actionPolicy[state]
-
-def actionValue_eval_offPolicy(self, state, action, reward, next_state, next_action):
-    # Q更新：使用经过max算子后的Q值
-    next_Q = max(self.Q[next_state].values()) if next_state in self.Q else 0
-    self.Q[state][action] += self.alpha * (reward + self.gamma * next_Q - self.Q[state][action])
-    
-    self.actionPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
-    self.targetPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.0)
-```
+* **同策略方法（On-policy）**：在实际行动中采用的策略（actionPolicy）与学习更新的策略（targetPolicy）相同，例如 SARSA。
+* **异策略方法（Off-policy）**：行为策略与目标策略不同，例如 Q-learning；重要性采样和max算子是实现异策略学习的两种常用方法。
 
 ## 概率模型 vs. 样本模型
 
