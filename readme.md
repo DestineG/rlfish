@@ -225,3 +225,279 @@ $$
 **说明**
 - 因为策略是动态变化并且贪婪的，所以有可能某些状态-动作对在采样过程中从未被选择过，导致这些对的价值无法更新，也有可能导致死循环。
 - 为了解决这些问题，可以采用探索策略（如 ε-贪婪策略）来确保所有状态-动作对都有机会被选择和更新。
+
+## dp -> mc -> td -> sarsa
+
+**基本公式**
+
+$$
+\begin{aligned}
+\text{回报定义： } \\
+G_{t} &= R_{t} + \gamma R_{t+1} + \gamma^2 R_{t+2} + ... \\
+G_{t} &= R_{t} + \gamma G_{t+1} \\
+\text{状态价值函数(状态回报)： } \\
+v_{\pi}(s) &= \sum_{a, s'} \pi(a|s) \cdot P(s'|s, a) \cdot [R(s, a, s') + \gamma v_{\pi}(s')] \\
+\text{动作价值函数（动作回报）： } \\
+q_{\pi}(s, a) &= \sum_{s'} P(s'|s, a) \cdot [R(s, a, s') + \gamma v_{\pi}(s')] \\
+&= \sum_{s'} P(s'|s, a) \cdot [R(s, a, s') + \gamma \sum_{a'} \pi(a'|s') \cdot q_{\pi}(s', a')] \\
+\text{最优策略： } \\
+\pi_{*}(s) &= \argmax_{a} q_{*}(s, a) \\
+&= \argmax_{a} \sum_{s'} P(s'|s, a) \cdot [R(s, a, s') + \gamma v_{*}(s')]
+\end{aligned}
+$$
+
+**价值函数之间的关系**
+
+$$
+\begin{aligned}
+v_{\pi}(s) \Leftrightarrow q_{\pi}(s, a) \\
+v_{\pi}(s) \Rightarrow \pi_{*}(s) \\
+q_{\pi}(s, a) \Rightarrow \pi_{*}(s)
+\end{aligned}
+$$
+
+### dp
+
+**dp 状态价值迭代**
+
+$$
+\begin{aligned}
+V_{t+1}(s) &= \max_{a} \sum_{s'} P(s'|s, a)\,[R(s, a, s') + \gamma V_{t}(s')]
+\end{aligned}
+$$
+
+``` python
+def value_iter_oneEpoch(env, V, gamma):
+    new_V = {}
+    for state in env.states():
+        actions_value = []
+        for action in env.actions():
+            next_state, reward = env.step(state, action)
+            actions_value.append(reward + gamma * V[next_state])
+        new_V[state] = max(actions_value)
+    return new_V
+```
+
+**dp 策略评估**
+
+$$
+\begin{aligned}
+V_{t+1}(s) &= \sum_{a, s'} \pi(a|s)\, P(s'|s, a)\,[R(s, a, s') + \gamma V_{t}(s')]
+\end{aligned}
+$$
+
+``` python
+def policy_eval_oneEpoch(env, V, policy, gamma):
+    new_V = {}
+    for state in env.states():
+        actions_value = []
+        for action in env.actions():
+            next_state, reward = env.step(state, action)
+            actions_value.append((reward + gamma * V[next_state]) * policy[state][action])
+        new_V[state] = sum(actions_value)
+    return new_V
+```
+
+**dp 策略改进**
+
+$$
+\begin{aligned}
+\pi_{*}(s) &= \argmax_{a} \sum_{s'} P(s'|s, a)\,[R(s, a, s') + \gamma V_{t}(s')]
+\end{aligned}
+$$
+
+``` python
+def policy_improve(env, V, gamma):
+    policy = {}
+    for state in env.states():
+        actions_value = {}
+        for action in env.actions():
+            next_state, reward = env.step(state, action)
+            actions_value[action] = reward + gamma * V[next_state]
+        max_action = max(actions_value, key=actions_value.get)
+        policy[state] = {a: 1.0 if a == max_action else 0.0 for a in env.actions()}
+    return policy
+```
+
+**tips**
+- 价值迭代是策略评估的一个特例：当策略为 $\pi(a|s)=1$（仅在 $a$ 为动作价值最大的动作时），策略评估方程退化为价值迭代(价值迭代 = 完全贪婪策略 + 策略评估)。
+- 状态价值迭代的结束标志是 $max|V_{t+1}(s)-V_{t}(s)| < \epsilon$。
+- dp 方法需要完整的环境动态模型，适用于小规模、可建模的环境。
+
+### mc
+
+**mc 状态价值迭代**
+
+$$
+\begin{aligned}
+memory &= [(s_{0}, a_{0}, r_{0}), (s_{1}, a_{1}, r_{1}), ..., (s_{t}, a_{t}, r_{t})], \text{memory 为回合采样数据, 其中} s_{t} \text{为终止状态, 所以} G_{s_{t}} = 0 \\
+G_{t-1} &= r_{t-1} + \gamma G_{t} \\
+V_{t-1}(s) &+= \alpha [G_{s_{t-1}} - V_{t-1}(s)]
+\end{aligned}
+$$
+
+``` python
+def stateValue_eval(V, alpha=0.1, gamma=0.9, memory):
+    G_s = 0
+    for state, action, reward in reversed(memory):
+        G_s = reward + gamma * G_s
+        V[state] += (G_s - V[state]) * alpha
+    return V
+```
+
+**mc 动作价值迭代**
+
+$$
+\begin{aligned}
+memory &= [(s_{0}, a_{0}, r_{0}), (s_{1}, a_{1}, r_{1}), ..., (s_{t}, a_{t}, r_{t})], \text{memory 为回合采样数据, 其中} s_{t} \text{为终止状态, 所以} G_{s_{t}, a_{t}} = 0 \\
+G_{t-1} &= r_{t-1} + \gamma G_{t} \\
+Q_{t-1}(s, a) &+= \alpha [G_{s_{t-1}, a_{t-1}} - Q_{t-1}(s, a)]
+\end{aligned}
+$$
+
+``` python
+def actionValue_eval(Q, alpha=0.1, gamma=0.9, memory):
+    G_sa = 0
+    for state, action, reward in reversed(memory):
+        G_sa = reward + gamma * G_sa
+        Q[state][action] += (G_sa - Q[state][action]) * alpha
+    return Q
+```
+
+**mc 策略生成**
+``` python
+def policy_generate(Q, epsilon=0.1):
+    policy = {}
+    for state in Q.keys():
+        actions_value = Q[state]
+        max_action = max(actions_value, key=actions_value.get)
+        policy[state] = {}
+        for action in actions_value.keys():
+            if action == max_action:
+                policy[state][action] = 1 - epsilon + (epsilon / len(actions_value))
+            else:
+                policy[state][action] = epsilon / len(actions_value)
+    return policy
+```
+
+**tips**
+- mc 方法需要完整的回合采样数据，适用于回合制任务。
+- 状态价值评估和动作价值评估的更新仅**依赖于同一回合中的真实采样**，不依赖于环境的动态模型。
+
+### td
+
+**td 状态价值迭代**
+
+$$
+\begin{aligned}
+memory &= [(s_{0}, a_{0}, r_{0}), (s_{1}, a_{1}, r_{1}), ..., (s_{t}, a_{t}, r_{t})], \text{memory 为回合采样数据, } s_{t} \text{不要求是终止状态, } V_{t} 初始化为 0 \\
+V_{t-1}(s) &+= \alpha [r + \gamma V_{t-1}(s') - V_{t-1}(s)]
+\end{aligned}
+$$
+
+``` python
+def stateValue_eval(V, alpha=0.1, gamma=0.9, state, action, reward, next_state):
+    next_V = V[next_state] if next_state in V else 0
+    V[state] += (reward + gamma * next_V - V[state]) * alpha
+    return V
+```
+
+**td 动作价值迭代**
+
+$$
+\begin{aligned}
+memory &= [(s_{0}, a_{0}, r_{0}), (s_{1}, a_{1}, r_{1}), ..., (s_{t}, a_{t}, r_{t})], \text{memory 为回合采样数据, } s_{t} \text{不要求是终止状态, } Q_{t} 初始化为 0 \\
+Q_{t-1}(s, a) &+= \alpha [r + \gamma Q_{t-1}(s', a') - Q_{t-1}(s, a)]
+\end{aligned}
+$$
+
+``` python
+def actionValue_eval(Q, alpha=0.1, gamma=0.9, state, action, reward, next_state, next_action):
+    next_Q = Q[next_state][next_action] if next_state in Q and next_action in Q[next_state] else 0
+    Q[state][action] += (reward + gamma * next_Q - Q[state][action]) * alpha
+    return Q
+```
+
+**td 策略生成**
+
+``` python
+def policy_generate(Q, epsilon=0.1):
+    policy = {}
+    for state in Q.keys():
+        actions_value = Q[state]
+        max_action = max(actions_value, key=actions_value.get)
+        policy[state] = {}
+        for action in actions_value.keys():
+            if action == max_action:
+                policy[state][action] = 1 - epsilon + (epsilon / len(actions_value))
+            else:
+                policy[state][action] = epsilon / len(actions_value)
+    return policy
+```
+
+**tips**
+- td 方法不要求完整的回合数据，可以在每个时间步进行更新，适用于连续任务。
+- 状态价值评估和动作价值评估的更新**依赖于跨回合的真实采样**，不依赖于环境的动态模型。
+
+### sarsa
+
+sarsa 是 td 方法的一种实现
+
+$$
+\begin{aligned}
+memory\_deque &= [(s, a, r, s', a')], \text{memory\_deque 为固定长度的采样数据队列, } s' \text{不要求是终止状态, } Q_{t} 初始化为 0 \\
+Q_{t-1}(s, a) &+= \alpha [r + \gamma Q_{t-1}(s', a') - Q_{t-1}(s, a)]
+\end{aligned}
+$$
+
+``` python
+def sarsa_actionValue_eval(Q, alpha=0.1, gamma=0.9, memory_deque):
+    for state, action, reward, next_state, next_action in memory_deque:
+        next_Q = Q[next_state][next_action] if next_state in Q and next_action in Q[next_state] else 0
+        Q[state][action] += (reward + gamma * next_Q - Q[state][action]) * alpha
+    return Q
+```
+
+## 同策略方法 vs. 异策略方法
+
+同策略方法（On-policy methods）和异策略方法（Off-policy methods）是强化学习中的两种不同的学习策略。
+同策略方法是指在实际行动中采用的策略(行为策略)和学习的策略(目标策略)是相同的。而异策略方法则是指行为策略和目标策略是不同的。
+
+``` python
+def get_action(self, actionPolicy, state):
+    # 行为策略
+    actions = list(self.actionPolicy[state].keys())
+    probabilities = list(actionPolicy[state].values())
+    action = np.random.choice(actions, p=probabilities)
+    return action
+
+def greedy_probs(self, Q, state, epsilon=0.1):
+    actions_value = Q[state]
+    max_action = max(actions_value, key=actions_value.get)
+    policy = {}
+    for action in actions_value.keys():
+        if action == max_action:
+            policy[action] = 1 - epsilon + (epsilon / len(actions_value))
+        else:
+            policy[action] = epsilon / len(actions_value)
+    return policy
+
+def actionValue_eval_onPolicy(self, state, action, reward, next_state, next_action):
+    next_Q = self.Q[next_state][next_action] if next_state in self.Q and next_action in self.Q[next_state] else 0
+    self.Q[state][action] += (reward + self.gamma * next_Q - self.Q[state][action]) * self.alpha
+    # 此处行为策略和目标策略的更新方式相同，称为同策略方法
+    self.actionPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
+    self.targetPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
+
+def actionValue_eval_offPolicy(self, state, action, reward, next_state, next_action):
+    next_Q = self.Q[next_state][next_action] if next_state in self.Q and next_action in self.Q[next_state] else 0
+    self.Q[state][action] += (reward + self.gamma * next_Q - self.Q[state][action]) * self.alpha
+    # 此处行为策略和目标策略的更新方式不同，称为异策略方法
+    self.actionPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
+    self.targetPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.2)
+```
+
+## 概率模型 vs. 样本模型
+
+概率模型是显式的保存策略的概率分布，使用时直接根据概率分布进行采样选择动作。
+样本模型是显式的保存策略的采样数据，使用时通过采样数据进行估计选择动作。
