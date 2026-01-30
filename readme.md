@@ -458,12 +458,25 @@ def sarsa_actionValue_eval(Q, alpha=0.1, gamma=0.9, memory_deque):
     return Q
 ```
 
+这是修改后的完整版本，既保持了你原有的教学说明风格，又让实现逻辑符合强化学习理论中 **同策略（SARSA）** 与 **异策略（Q-learning）** 的核心差异。
+
+---
+
 ## 同策略方法 vs. 异策略方法
 
-同策略方法（On-policy methods）和异策略方法（Off-policy methods）是强化学习中的两种不同的学习策略。
-同策略方法是指在实际行动中采用的策略(行为策略)和学习的策略(目标策略)是相同的。而异策略方法则是指行为策略和目标策略是不同的。
+同策略方法（On-policy methods）和异策略方法（Off-policy methods）是强化学习中的两种不同学习策略。
 
-``` python
+* **同策略方法（On-policy）**：在实际行动中采用的策略（行为策略）与学习更新的策略（目标策略）相同。例如 SARSA。
+* **异策略方法（Off-policy）**：行为策略与目标策略不同，通常使用贪婪策略更新。例如 Q-learning。
+
+**举例**
+同策略方法：行为策略采用 ε-贪婪策略，next_Q[next_state][next_action]存储的是 ε-贪婪策略构造结果，更新策略时使用该构造结果，表示更新Q是遵循了行为策略，**也就是更新时采用采样到的动作**。
+
+异策略方法：行为策略采用 ε-贪婪策略，next_Q[next_state][next_action]存储的是 ε-贪婪策略构造结果，更新策略时使用的是对next_Q[next_state]取max的值，表示更新Q并没有遵循行为策略，**也就是更新时采用最优动作**。
+
+行为策略(greedy_probs的构造方式)和更新策略(next_Q获取的方式)行为一致就是同策略，不一致就是异策略
+
+```python
 def get_action(self, actionPolicy, state):
     # 行为策略
     actions = list(self.actionPolicy[state].keys())
@@ -472,6 +485,7 @@ def get_action(self, actionPolicy, state):
     return action
 
 def greedy_probs(self, Q, state, epsilon=0.1):
+    # ε-贪婪策略生成
     actions_value = Q[state]
     max_action = max(actions_value, key=actions_value.get)
     policy = {}
@@ -483,18 +497,20 @@ def greedy_probs(self, Q, state, epsilon=0.1):
     return policy
 
 def actionValue_eval_onPolicy(self, state, action, reward, next_state, next_action):
+    # Q更新：直接使用存储Q值
     next_Q = self.Q[next_state][next_action] if next_state in self.Q and next_action in self.Q[next_state] else 0
-    self.Q[state][action] += (reward + self.gamma * next_Q - self.Q[state][action]) * self.alpha
-    # 此处行为策略和目标策略的更新方式相同，称为同策略方法
+    self.Q[state][action] += self.alpha * (reward + self.gamma * next_Q - self.Q[state][action])
+    
     self.actionPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
-    self.targetPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
+    self.targetPolicy[state] = self.actionPolicy[state]
 
 def actionValue_eval_offPolicy(self, state, action, reward, next_state, next_action):
-    next_Q = self.Q[next_state][next_action] if next_state in self.Q and next_action in self.Q[next_state] else 0
-    self.Q[state][action] += (reward + self.gamma * next_Q - self.Q[state][action]) * self.alpha
-    # 此处行为策略和目标策略的更新方式不同，称为异策略方法
+    # Q更新：使用经过max算子后的Q值
+    next_Q = max(self.Q[next_state].values()) if next_state in self.Q else 0
+    self.Q[state][action] += self.alpha * (reward + self.gamma * next_Q - self.Q[state][action])
+    
     self.actionPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.1)
-    self.targetPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.2)
+    self.targetPolicy[state] = self.greedy_probs(self.Q, state, epsilon=0.0)
 ```
 
 ## 概率模型 vs. 样本模型
