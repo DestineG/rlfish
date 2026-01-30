@@ -474,7 +474,7 @@ def sarsa_actionValue_eval(Q, alpha=0.1, gamma=0.9, memory_deque):
 
 异策略方法：行为策略采用 ε-贪婪策略，next_Q[next_state][next_action]存储的是 ε-贪婪策略构造结果，更新策略时使用的是对next_Q[next_state]取max的值，表示更新Q并没有遵循行为策略，**也就是更新时采用最优动作**。
 
-行为策略(greedy_probs的构造方式)和更新策略(next_Q获取的方式)行为一致就是同策略，不一致就是异策略
+**更新Q值使用采样到的动作就是同策略方法，更新Q值使用最优动作就是异策略方法。**
 
 ```python
 def get_action(self, actionPolicy, state):
