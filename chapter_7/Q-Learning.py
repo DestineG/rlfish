@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
+import torch
 import numpy as np
-from collections import defaultdict, deque
 
 class GridWorld:
     def __init__(self):
@@ -176,65 +176,110 @@ class GridWorld:
         plt.show()
 
 
-def greedy_probs(Q, state, action_size, epsilon=0.0):
-    qs = [Q[(state, a)] for a in range(action_size)]
-    max_q = np.argmax(qs)
+def one_hot(state, height=4, width=4):
+    one_hot_vector = np.zeros(height * width)
+    index = state[0] * width + state[1]
+    one_hot_vector[index] = 1
+    return one_hot_vector
 
-    base_prob = epsilon / action_size
-    action_probs = {a: base_prob for a in range(action_size)}
-    action_probs[max_q] += 1.0 - epsilon
+class Qnet(torch.nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(Qnet, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, 128)
+        self.fc2 = torch.nn.Linear(128, action_dim)
 
-    return action_probs
+    def forward(self, x):
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
-class Agent:
-    def __init__(self):
-        self.gama = 0.9
-        self.action_size = 4
 
-        self.Q = defaultdict(lambda: 0.0)
-    
-    def get_action(self, state):
-        action_probs = greedy_probs(self.Q, state, self.action_size, epsilon=0.1)
-        actions = list(action_probs.keys())
-        probs = list(action_probs.values())
-        return np.random.choice(actions, p=probs)
+class QLearningAgent:
+    def __init__(self, state_dim, action_dim, lr=0.01, gamma=0.9, epsilon=0.1):
+        # 将 qNet 当作Q函数使用
+        self.qnet = Qnet(state_dim, action_dim)
+        self.optimizer = torch.optim.Adam(self.qnet.parameters(), lr=lr)
+        # 奖励衰减越大越偏向于最短路径
+        self.gamma = gamma
+        # 探索力度越大越偏向于安全路径
+        self.epsilon = epsilon
+        self.action_dim = action_dim
 
-    # 策略更新
+    def select_action(self, state):
+        if np.random.rand() < self.epsilon:
+            return np.random.randint(self.action_dim)
+        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        q_values = self.qnet(state_tensor)
+        return torch.argmax(q_values).item()
+
     def update(self, state, action, reward, next_state, done):
-        
-        next_q = 0 if done else (max([self.Q[(next_state, next_action)] for next_action in range(self.action_size)]))
+        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0)
+        # 当前状态的 Q 值 shape: [1, action_dim]
+        q_values = self.qnet(state_tensor)
+        # 下一状态的 Q 值 shape: [1, action_dim]
+        next_q_values = self.qnet(next_state_tensor)
 
-        # 这是Q表的目标
-        target = (reward + self.gama * next_q)
-        # 引导Q表向目标靠近
-        self.Q[(state, action)] += 0.1 * (target - self.Q[(state, action)])
+        done = int(done)
 
-def td_eval():
-    env = GridWorld()
-    agent = Agent()
-    num_episodes = 500
+        # 构造目标 Q 值 这里假设下一状态Q值能正确引导当前状态的Q值更新
+        target = reward + (1 - done) * self.gamma * torch.max(next_q_values).item()
+        # 复制当前 Q 值用于构造目标 target_f.shape: [1, action_dim]
+        target_f = q_values.clone().detach()
+        # 只更新所采取动作的 Q 值 target_f[0].shape: [action_dim]
+        target_f[0][action] = target
 
-    for episode in range(num_episodes):
-        state = env.reset()
-        done = False
+        # 计算当前状态下action Q值预测与真实Q值的误差
+        loss = torch.nn.functional.mse_loss(q_values, target_f)
 
-        # 进行一个回合
-        while not done:
-            action = agent.get_action(state)
-            next_state, reward, done = env.step(action)
-            # 实时更新
-            agent.update(state, action, reward, next_state, done)
-            state = next_state
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
 
-    # 提取状态价值函数 V 和 策略 pi
-    V = np.zeros(env.shape)
-    for i in range(env.height):
-        for j in range(env.width):
-            state = (i, j)
-            qs = [agent.Q[(state, a)] for a in env.actions()]
-            V[i, j] = max(qs)
-    env.render_v(V, title="TD Control: State Value Function V")
-    env.render_q(agent.Q, title="TD Control: Q-values & Policy")
 
 if __name__ == "__main__":
-    td_eval()
+    env = GridWorld()
+    state_dim = env.height * env.width
+    action_dim = len(env.actions())
+    agent = QLearningAgent(state_dim, action_dim, lr=0.01, gamma=0.9, epsilon=0.1)
+
+    num_episodes = 500
+    loss_list = []
+    for episode in range(num_episodes):
+        state = env.reset()
+        state_oh = one_hot(state, height=env.height, width=env.width)
+        done = False
+        loss = 0
+        step = 1
+        total_reward = 0
+        while not done:
+            action = agent.select_action(state_oh)
+            next_state, reward, done = env.step(action)
+            next_state_oh = one_hot(next_state, height=env.height, width=env.width)
+            loss += agent.update(state_oh, action, reward, next_state_oh, done)
+            step += 1
+            state_oh = next_state_oh
+            total_reward += reward
+        loss_list.append(loss/step)
+    
+    # loss 曲线
+    plt.figure(figsize=(6, 4))
+    plt.plot(loss_list, color='orange')
+    plt.xlabel('Episode')
+    plt.ylabel('Average Loss')
+    plt.title('Training Loss per Episode')
+    plt.grid(True)
+    plt.show()
+
+    # 提取 Q 值用于渲染
+    Q_values = {}
+    for i in range(env.height):
+        for j in range(env.width):
+            state_oh = one_hot((i, j), height=env.height, width=env.width)
+            state_tensor = torch.FloatTensor(state_oh).unsqueeze(0)
+            q_values = agent.qnet(state_tensor).detach().numpy().flatten()
+            for a in range(action_dim):
+                Q_values[((i, j), a)] = q_values[a]
+
+    env.render_q(Q_values, title="Learned Q-values after Q-Learning")

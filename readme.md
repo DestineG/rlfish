@@ -258,6 +258,8 @@ $$
 
 ### dp
 
+![dp 更新](./chapter_6//figures//dp.png)
+
 **dp 状态价值迭代**
 
 $$
@@ -326,6 +328,8 @@ def policy_improve(env, V, gamma):
 
 ### mc
 
+![mc 更新](./chapter_6//figures//mc.png)
+
 **mc 状态价值迭代**
 
 $$
@@ -385,6 +389,8 @@ def policy_generate(Q, epsilon=0.1):
 - 状态价值评估和动作价值评估的更新仅**依赖于同一回合中的真实采样**，不依赖于环境的动态模型。
 
 ### td
+
+![td 更新](./chapter_6//figures//td.png)
 
 **td 状态价值迭代**
 

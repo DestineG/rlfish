@@ -1,0 +1,6 @@
+numpy==1.26.0
+scipy==1.11.3
+matplotlib==3.8.0
+torch==2.2.0
+pygame==2.5.2
+gymnasium[classic_control]==0.29.1

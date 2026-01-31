@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
+import torch
 import numpy as np
-from collections import defaultdict
 
 class GridWorld:
     def __init__(self):
@@ -48,6 +48,17 @@ class GridWorld:
     
     def reward(self, state):
         return self.reward_map[state]
+    
+    def reset(self):
+        self.state = self.start_state
+        return self.state
+
+    def step(self, action):
+        next_s = self.next_state(self.state, action)
+        r = self.reward(next_s)
+        self.state = next_s
+        done = (next_s == self.goal_states)
+        return next_s, r, done
 
     def render_v(self, V, title="Value Function"):
         """
@@ -98,119 +109,176 @@ class GridWorld:
 
         plt.show()
     
-    def render_q(self, pi, title="Policy (Action Directions)"):
+    def render_q(self, Q, title="Q-values Triangles"):
         """
-        使用 matplotlib 以 grid 形式渲染策略 pi，
-        显示每个状态的最优动作（箭头方向）
+        在每个方格画两条对角线形成四个等腰直角三角形，
+        用绿色填充表示最优动作方向
+        Q: dict, key=(state, action), value=Q(s,a)
         """
-        fig, ax = plt.subplots()
-
-        # 基础背景
-        grid = np.zeros(self.shape)
-        ax.imshow(grid, cmap="Greys", alpha=0.2)
+        fig, ax = plt.subplots(figsize=(self.width*1.5, self.height*1.5))
 
         for i in range(self.height):
             for j in range(self.width):
-                # 如果是墙
                 if self.reward_map[i, j] is None:
-                    ax.add_patch(
-                        plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="black")
-                    )
+                    # 墙
+                    ax.add_patch(plt.Rectangle((j-0.5, i-0.5), 1, 1, color="black"))
                     ax.text(j, i, "W", ha="center", va="center", color="white", fontsize=12)
+                    continue
+
+                # 背景颜色
+                r = self.reward_map[i, j]
+                if (i, j) == self.goal_states:
+                    color = "lightgreen"
+                elif r == -1:
+                    color = "lightcoral"
                 else:
-                    # 普通状态 / 终止状态
-                    r = self.reward_map[i, j]
+                    color = "white"
 
-                    # 终止状态显示绿色
-                    if (i, j) == self.goal_states:
-                        color = "lightgreen"
-                    elif r == -1:
-                        color = "lightcoral"
-                    else:
-                        color = "white"
+                ax.add_patch(plt.Rectangle((j-0.5, i-0.5), 1, 1, facecolor=color, edgecolor="black"))
 
-                    ax.add_patch(
-                        plt.Rectangle((j - 0.5, i - 0.5), 1, 1,
-                                    edgecolor="black", facecolor=color)
-                    )
-                    # 没有显示值，只显示箭头方向
-                    ax.text(j, i, "", ha="center", va="center", fontsize=10)
+                # 四个动作 Q 值
+                q_values = [Q[((i, j), a)] for a in range(4)]
+                best_action = np.argmax(q_values)
 
-                    # 绘制箭头表示最优动作
-                    best_action = max(pi[(i, j)], key=pi[(i, j)].get)  # 获取最佳动作
-                    dx, dy = self.action_vector[best_action]  # 获取动作的偏移量
-                    ax.arrow(j, i, dy * 0.2, dx * 0.2, head_width=0.1, head_length=0.1, fc='blue', ec='blue')
+                # 定义四个三角形的坐标（上、下、左、右）
+                center = (j, i)
+                half = 0.5
+                triangles = {
+                    0: [( (j-half,i-half), (j+half,i-half), center )],  # Up
+                    1: [( (j-half,i+half), (j+half,i+half), center )],  # Down
+                    2: [( (j-half,i-half), (j-half,i+half), center )],  # Left
+                    3: [( (j+half,i-half), (j+half,i+half), center )],  # Right
+                }
+
+                # 画绿色填充表示最优动作
+                for action, tri_list in triangles.items():
+                    for tri in tri_list:
+                        if action == best_action:
+                            ax.add_patch(plt.Polygon(tri, color='green', alpha=0.6))
+                        else:
+                            ax.add_patch(plt.Polygon(tri, color='white', alpha=0.0))  # 空白透明
+
+                # 可选：在每个三角形里标注 Q 值
+                offset = 0.25
+                ax.text(j, i-half+0.1, f"{q_values[0]:.2f}", ha="center", va="center", fontsize=7, color="black")  # Up
+                ax.text(j, i+half-0.1, f"{q_values[1]:.2f}", ha="center", va="center", fontsize=7, color="black")  # Down
+                ax.text(j-half+0.1, i, f"{q_values[2]:.2f}", ha="center", va="center", fontsize=7, color="black")  # Left
+                ax.text(j+half-0.1, i, f"{q_values[3]:.2f}", ha="center", va="center", fontsize=7, color="black")  # Right
 
         ax.set_xticks(range(self.width))
         ax.set_yticks(range(self.height))
         ax.set_xticklabels(range(self.width))
         ax.set_yticklabels(range(self.height))
-        ax.set_title(title)
-
-        # 坐标系调整（符合 grid world 直觉）
-        ax.set_xlim(-0.5, self.width - 0.5)
-        ax.set_ylim(self.height - 0.5, -0.5)
+        ax.set_xlim(-0.5, self.width-0.5)
+        ax.set_ylim(self.height-0.5, -0.5)
         ax.set_aspect("equal")
-
+        ax.set_title(title)
         plt.show()
 
 
-def eval_onestep(env, V, pi, gama=0.9):
-    new_V = {}
+def one_hot(state, height=4, width=4):
+    one_hot_vector = np.zeros(height * width)
+    index = state[0] * width + state[1]
+    one_hot_vector[index] = 1
+    return one_hot_vector
 
-    for state in env.states():
-        # 终止状态：价值定义为 0
-        if state == env.goal_states:
-            new_V[state] = 0.0
-            continue
+class Qnet(torch.nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(Qnet, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, 128)
+        self.fc2 = torch.nn.Linear(128, action_dim)
 
-        v = 0.0
-        action_values = {}
-        for action in env.actions():
-            next_s = env.next_state(state, action)
-            r = env.reward(next_s)
-            action_values[action] = r + gama * V[next_s]
-        pi[state] = {a: 0.0 for a in env.actions()}
-        best_action = argmax_dict(action_values)
-        pi[state][best_action] = 1.0
-        for action, action_prob in pi[state].items():
-            next_s = env.next_state(state, action)
-            r = env.reward(next_s)
-            v += action_prob * (r + gama * V[next_s])
+    def forward(self, x):
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
-        new_V[state] = v
 
-    return new_V, pi
+class QLearningAgent:
+    def __init__(self, state_dim, action_dim, lr=0.01, gamma=0.9, epsilon=0.1):
+        # 将 qNet 当作Q函数使用
+        self.qnet = Qnet(state_dim, action_dim)
+        self.optimizer = torch.optim.Adam(self.qnet.parameters(), lr=lr)
+        # 奖励衰减越大越偏向于最短路径
+        self.gamma = gamma
+        # 探索力度越大越偏向于安全路径
+        self.epsilon = epsilon
+        self.action_dim = action_dim
 
-def policy_eval(env, V, pi, gama=0.9, theta=1e-6):
-    while True:
-        old_V = V.copy()
-        V, pi = eval_onestep(env, V, pi, gama)
-        delta = max(abs(old_V[s] - V[s]) for s in env.states())
-        if delta < theta:
-            break
-    return V, pi
+    def select_action(self, state):
+        if np.random.rand() < self.epsilon:
+            return np.random.randint(self.action_dim)
+        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        q_values = self.qnet(state_tensor)
+        return torch.argmax(q_values).item()
 
-def argmax_dict(d):
-    """返回字典中值最大的键"""
-    max_key = None
-    max_value = float("-inf")
-    for k, v in d.items():
-        if v > max_value:
-            max_value = v
-            max_key = k
-    return max_key
+    def update(self, state, action, reward, next_state, done):
+        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0)
+        # 当前状态的 Q 值 shape: [1, action_dim]
+        q_values = self.qnet(state_tensor)
+        # 下一状态的 Q 值 shape: [1, action_dim]
+        next_q_values = self.qnet(next_state_tensor)
 
-def policy_iteration(env, gama=0.9, theta=1e-6):
-    # 初始化价值函数 V 和策略 pi
-    V = defaultdict(lambda: 0.0)
-    pi = defaultdict(lambda: {a: 1 / len(env.actions()) for a in env.actions()})
+        done = int(done)
 
-    V, pi = policy_eval(env, V, pi, gama, theta)
+        # 构造目标 Q 值 这里假设下一状态Q值能正确引导当前状态的Q值更新
+        target = reward + (1 - done) * self.gamma * torch.max(next_q_values).item()
+        # 复制当前 Q 值用于构造目标 target_f.shape: [1, action_dim]
+        target_f = q_values.clone().detach()
+        # 只更新所采取动作的 Q 值 target_f[0].shape: [action_dim]
+        target_f[0][action] = target
 
-    return pi
+        loss = torch.nn.functional.mse_loss(q_values, target_f)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
+
 
 if __name__ == "__main__":
     env = GridWorld()
-    pi = policy_iteration(env)
-    env.render_q(pi)
+    state_dim = env.height * env.width
+    action_dim = len(env.actions())
+    agent = QLearningAgent(state_dim, action_dim, lr=0.01, gamma=0.9, epsilon=0.1)
+
+    num_episodes = 500
+    loss_list = []
+    for episode in range(num_episodes):
+        state = env.reset()
+        state_oh = one_hot(state, height=env.height, width=env.width)
+        done = False
+        loss = 0
+        step = 1
+        total_reward = 0
+        while not done:
+            action = agent.select_action(state_oh)
+            next_state, reward, done = env.step(action)
+            next_state_oh = one_hot(next_state, height=env.height, width=env.width)
+            loss += agent.update(state_oh, action, reward, next_state_oh, done)
+            step += 1
+            state_oh = next_state_oh
+            total_reward += reward
+        loss_list.append(loss/step)
+    
+    # loss 曲线
+    plt.figure(figsize=(6, 4))
+    plt.plot(loss_list, color='orange')
+    plt.xlabel('Episode')
+    plt.ylabel('Average Loss')
+    plt.title('Training Loss per Episode')
+    plt.grid(True)
+    plt.show()
+
+    # 提取 Q 值用于渲染
+    Q_values = {}
+    for i in range(env.height):
+        for j in range(env.width):
+            state_oh = one_hot((i, j), height=env.height, width=env.width)
+            state_tensor = torch.FloatTensor(state_oh).unsqueeze(0)
+            q_values = agent.qnet(state_tensor).detach().numpy().flatten()
+            for a in range(action_dim):
+                Q_values[((i, j), a)] = q_values[a]
+
+    env.render_q(Q_values, title="Learned Q-values after Q-Learning")
