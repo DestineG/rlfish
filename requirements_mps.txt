@@ -4,3 +4,7 @@ matplotlib==3.8.0
 torch==2.2.0
 pygame==2.5.2
 gymnasium[classic_control]==0.29.1
+tqdm==4.67.2
+gymnasium[atari, accept-rom-license]==0.29.1
+opencv-python==4.9.0.80
+ale-py==0.8.1

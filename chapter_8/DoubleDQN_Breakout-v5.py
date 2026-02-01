@@ -142,10 +142,12 @@ class DQNAgent:
         
         # 计算目标Q值(贪婪策略)
         next_states = torch.from_numpy(next_states).float().to(self.device)
+        # 用当前Q网络选择下一个动作 (batch_size, state_dim) -> (batch_size, action_dim)
+        next_actions = self.q_net(next_states).argmax(1, keepdim=True)
         # (batch_size, state_dim) -> (batch_size, action_dim)
         next_qs = self.target_q_net(next_states)
-        # (batch_size, action_dim) -> (batch_size, 2) -> (batch_size,)
-        next_q = next_qs.max(1)[0]
+        # 用目标Q网络评估下一个动作 (batch_size, action_dim) -> (batch_size, 2) -> (batch_size,)
+        next_q = next_qs.gather(1, next_actions).squeeze(1)
         target_q = torch.FloatTensor(rewards).to(self.device) + self.gamma * next_q * (1 - torch.FloatTensor(dones).to(self.device))
 
         # 优化Q网络
@@ -199,7 +201,7 @@ def trainQLearning(show_plot=True, device=torch.device("cpu")):
     plt.tight_layout()
     plt.show()
 
-def play_trained_agent(agent, episodes=3, render_mode="human", device=torch.device("cpu")):
+def play_trained_agent(agent, episodes=3, render_mode="human"):
     """
     使用训练好的 agent 在环境中可视化游戏。
     参数：
