@@ -481,3 +481,78 @@ def sarsa_actionValue_eval(Q, alpha=0.1, gamma=0.9, memory_deque):
 
 概率模型是显式的保存策略的概率分布，使用时直接根据概率分布进行采样选择动作。
 样本模型是显式的保存策略的采样数据，使用时通过采样数据进行估计选择动作。
+
+## 策略梯度方法
+
+策略梯度方法通过直接优化策略的参数来最大化预期回报。其核心思想是计算策略参数的梯度，并使用梯度上升法更新参数
+
+### REINFORCE(无 baseline)
+
+$$
+\begin{aligned}
+&\text{轨迹：}\quad
+\tau = \big((s_0,a_0,r_0),(s_1,a_1,r_1),\dots,(s_T,a_T,r_T)\big), r_T=0 \\
+&\text{reward-to-go（从时间 }t\text{ 开始的折扣回报）：} G_t(\tau)=\sum_{k=t}^{T}\gamma^{k-t} r_k \\
+&\text{目标函数（期望回报）：} J(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}\big[G_0(\tau)\big]
+= \sum_{\tau} P_\theta(\tau) G_0(\tau)
+\end{aligned}
+$$
+
+轨迹概率可以展开为策略概率与转移概率的乘积：
+$$P_\theta(\tau)=\rho(s_0)\prod_{t=0}^{T} \pi_\theta(a_t|s_t) P(s_{t+1}\mid s_t,a_t)$$
+其中环境状态转移 $(P(\cdot))$ 与参数 $(\theta)$ 无关（若为确定性则为 1），因此在对 $(\theta)$ 求导时可忽略转移项的导数。
+
+对 $(J(\theta))$ 求梯度：
+$$
+\begin{aligned}
+\nabla_\theta J(\theta) &= \sum_{\tau} \nabla_\theta P_\theta(\tau) G_0(\tau) \\
+&= \sum_{\tau} P_\theta(\tau) \nabla_\theta \log P_\theta(\tau) G_0(\tau) \qquad(\text{用 } \nabla P = P\nabla\log P)\\
+&= \mathbb{E}_{\tau\sim\pi_\theta}\Big[ \nabla_\theta \log P_\theta(\tau) G_0(\tau)\Big]
+\end{aligned}
+$$
+
+展开 $(\log P_\theta(\tau))$ 中仅依赖 $(\theta)$ 的部分（即策略项）：
+$$
+\log P_\theta(\tau)=\log \rho(s_0)+\sum_{t=0}^T \log\pi_\theta(a_t|s_t) + \sum_{t=0}^T \log P(s_{t+1}|s_t,a_t)
+$$
+
+因此去掉与 $(\theta)$ 无关的项，得
+$$
+\begin{aligned}
+\nabla_\theta J(\theta)
+&= \mathbb{E}_{\tau\sim\pi_\theta}\Big[\sum_{t=0}^T \nabla_\theta \log\pi_\theta(a_t|s_t) G_0(\tau)\Big]
+\end{aligned}
+$$
+
+为减小方差并符合因果性，通常把 $(G_0(\tau))$ 换为对应时间的 reward-to-go $(G_t(\tau))$（等价的推导，只是把期望中每项的回报替换为从该时刻起的折扣回报）：
+$$
+\boxed{\nabla_\theta J(\theta)
+= \mathbb{E}_{\tau\sim\pi_\theta}\Big[\sum_{t=0}^T \nabla_\theta \log\pi_\theta(a_t|s_t) G_t(\tau)\Big]}
+$$
+
+用样本平均进行蒙特卡洛估计（N 条轨迹）：
+$$
+\nabla_\theta J(\theta)
+\approx \frac{1}{N}\sum_{i=1}^N \sum_{t=0}^{T_i} \nabla_\theta \log\pi_\theta(a_t^{(i)}|s_t^{(i)}) G_t^{(i)}
+$$
+
+对应的参数更新（梯度上升）：
+$$
+\theta \leftarrow \theta + \alpha \nabla_\theta J(\theta)
+$$
+
+或者写成常见的最小化损失形式（便于用现代优化器实现）：
+$$
+\mathcal{L}(\theta) := -\frac{1}{N}\sum_{i=1}^N\sum_{t=0}^{T_i} \log\pi_\theta(a_t^{(i)}|s_t^{(i)}) G_t^{(i)} \\
+$$
+
+**下面证明该损失函数能够使得 $\theta$ 向 $\nabla_\theta J(\theta)$ 优化：**
+$$
+\begin{aligned}
+\nabla_\theta \mathcal{L}(\theta) &= -\frac{1}{N}\sum_{i=1}^N \sum_{t=0}^{T_i} \nabla_\theta \log\pi_\theta(a_t^{(i)}|s_t^{(i)}) G_t^{(i)} \\
+&= -\nabla_\theta J(\theta) \\
+& \theta \leftarrow \theta - \alpha \nabla_\theta \mathcal{L}(\theta) \\
+& \theta \leftarrow \theta + \alpha \nabla_\theta J(\theta) \\
+& \text{两种写法等价}
+\end{aligned}
+$$
