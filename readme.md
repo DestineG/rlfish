@@ -488,6 +488,8 @@ def sarsa_actionValue_eval(Q, alpha=0.1, gamma=0.9, memory_deque):
 
 ### REINFORCE(无 baseline)
 
+#### 梯度推导
+
 $$
 \begin{aligned}
 &\text{轨迹：}\quad
@@ -541,7 +543,9 @@ $$
 \theta \leftarrow \theta + \alpha \nabla_\theta J(\theta)
 $$
 
-或者写成常见的最小化损失形式（便于用现代优化器实现）：
+#### 损失函数构造
+
+常见最小化损失形式（便于用现代优化器实现）：
 $$
 \mathcal{L}(\theta) := -\frac{1}{N}\sum_{i=1}^N\sum_{t=0}^{T_i} \log\pi_\theta(a_t^{(i)}|s_t^{(i)}) G_t^{(i)} \\
 $$
