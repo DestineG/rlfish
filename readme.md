@@ -627,3 +627,7 @@ $$
 
 **A2C 网络结构(Advantage Actor-Critic)**
 ![A2C 网络结构](./figures/A2C.iodraw.png)
+
+**DDPG 网络结构(Deep Deterministic Policy Gradient)**
+- 经验回放可以解决数据相关性问题，提高样本利用率，但会增加计算和存储开销，**并可能引入过时数据**
+![DDPG 网络结构](./figures/DDPG.iodraw.png)
