@@ -630,4 +630,5 @@ $$
 
 **DDPG 网络结构(Deep Deterministic Policy Gradient)**
 - 经验回放可以解决数据相关性问题，提高样本利用率，但会增加计算和存储开销，**并可能引入过时数据**
+- policy 网络直接输出最优动作而不是动作分布
 ![DDPG 网络结构](./figures/DDPG.iodraw.png)
