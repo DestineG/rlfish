@@ -26,7 +26,8 @@ class Agent:
 
         self.policy = Policy(state_dim, action_dim).to(self.device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr)
-
+        
+    # 以可微分的方式选择动作
     def select_action(self, state):
         # (state_dim,) -> (1, state_dim)
         state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
@@ -54,6 +55,7 @@ class Agent:
             returns.insert(0, R)
 
         returns = torch.tensor(returns, dtype=torch.float32).to(self.device)
+        # 标准化回报（核心：减均值=基线，除标准差=缩放，1e-5避免除0）
         returns = (returns - returns.mean()) / (returns.std() + 1e-5)
 
         # 累积损失
@@ -65,6 +67,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
         self.memory = []
+
 
 
 def train(episodes, device="cpu"):
@@ -84,7 +87,6 @@ def train(episodes, device="cpu"):
             action, log_prob = agent.select_action(state)
             next_state, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
-            reward -= (0.01 * abs(next_state[0]) + 0.01 * abs(next_state[2]))
             agent.add(reward, log_prob)
             state = next_state
             total_reward += reward

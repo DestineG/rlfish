@@ -560,3 +560,52 @@ $$
 & \text{两种写法等价}
 \end{aligned}
 $$
+
+### REINFORCE(带 baseline)
+
+#### 梯度推导
+
+$$
+\boxed{\nabla_\theta J(\theta)
+= \mathbb{E}_{\tau\sim\pi_\theta}\Big[\sum_{t=0}^T \nabla_\theta \log\pi_\theta(a_t|s_t) G_t(\tau)\Big]}
+$$
+
+引入 baseline 减小方差：
+$$
+\begin{aligned}
+\nabla_\theta J(\theta) &= \mathbb{E}_{\tau\sim\pi_\theta}\Big[\sum_{t=0}^T \nabla_\theta \log\pi_\theta(a_t|s_t) (G_t(\tau) - b(s_t))\Big] \\
+& \text{其中 } b(s_t) \text{ 为与动作无关的基线函数} \\
+& \text{证明：} \\
+&\mathbb{E}_{\tau\sim\pi_\theta}\Big[\sum_{t=0}^T \nabla_\theta\log\pi_\theta(a_t|s_t) b(s_t)\Big]
+= \sum_{\tau} P_\theta(\tau)\sum_{t=0}^T \nabla_\theta\log\pi_\theta(a_t|s_t) b(s_t) &&\text{（期望展开）} \\
+&= \sum_{t=0}^T \sum_{\tau} P_\theta(\tau) \nabla_\theta\log\pi_\theta(a_t|s_t) b(s_t) &&\text{（交换有限求和）} \\
+&= \sum_{t=0}^T \sum_{s_t}\sum_{a_t}\sum_{\tau_{-t}} P_\theta(s_t) \pi_\theta(a_t|s_t) P_\theta(\tau_{-t}\mid s_t,a_t) \nabla_\theta\log\pi_\theta(a_t|s_t) b(s_t) &&\text{（分解轨迹）} \\
+&= \sum_{t=0}^T \sum_{s_t} P_\theta(s_t) b(s_t)\sum_{a_t}\nabla_\theta\pi_\theta(a_t|s_t)\sum_{\tau_{-t}}P_\theta(\tau_{-t}\mid s_t,a_t) &&\text{（}\pi\nabla\log\pi=\nabla\pi\text{）} \\
+&= \sum_{t=0}^T \sum_{s_t} P_\theta(s_t) b(s_t)\sum_{a_t}\nabla_\theta\pi_\theta(a_t|s_t) &&\text{（条件分布对 }\tau_{-t}\text{ 归一）} \\
+&= \sum_{t=0}^T \sum_{s_t} P_\theta(s_t) b(s_t) \nabla_\theta\sum_{a_t}\pi_\theta(a_t|s_t)
+= \sum_{t=0}^T \sum_{s_t} P_\theta(s_t) b(s_t) \nabla_\theta 1 = 0
+\end{aligned}
+$$
+
+**所以，引入 baseline 不会改变梯度的期望，只会让$G_{t}$的方差减小，从而提高训练的稳定性和效率。**
+
+### 四种梯度策略法
+
+**目标函数统一数学表达式**
+
+$$
+\begin{aligned}
+\nabla_\theta J(\theta) &= \mathbb{E}_{\tau\sim\pi_\theta}\Big[\sum_{t=0}^T \nabla_\theta \log\pi_\theta(a_t|s_t) \delta_{t} \Big]
+\end{aligned}
+$$
+
+**四种方法的 $\delta_{t}$ 定义**
+
+$$
+\begin{alignedat}{2}
+\delta_{t} &= G_{\tau} \qquad && \text{基础策略梯度法} \\
+\delta_{t} &= G_{t} \qquad && \text{REINFORCE} \\
+\delta_{t} &= G_{t} - b(s_t) \qquad && \text{带基线 REINFORCE} \\
+\delta_{t} &= \left[ r_{t} + \gamma V(s_{t+1}) \right] - V(s_{t}) \qquad && \text{Actor-Critic}
+\end{alignedat}
+$$
