@@ -609,3 +609,7 @@ $$
 \delta_{t} &= \left[ r_{t} + \gamma V(s_{t+1}) \right] - V(s_{t}) \qquad && \text{Actor-Critic}
 \end{alignedat}
 $$
+
+## 深度强化学习算法分类
+
+![深度强化学习算法分类](./chapter_10/figures//深度强化学习算法分类.iodraw.png)
