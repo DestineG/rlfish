@@ -1,14 +1,21 @@
 ## 环境
 
 ``` bash
-python=3.8.2
 numpy==1.22.0
+scipy==1.8.0
 matplotlib==3.5.0
+torch==1.8.0
+pygame==2.1.2
 gym[classic_control]==0.23.0
-Scipy==1.8.0
-Pygame==2.1.2
-Torch==1.8.0
+tqdm==4.67.2
+gymnasium[atari, accept-rom-license]==0.29.1
+opencv-python==4.9.0.80
+ale-py==0.8.1
 ```
+
+## 深度强化学习算法分类
+
+![深度强化学习算法分类](./chapter_10/figures//深度强化学习算法分类.iodraw.png)
 
 ## 非稳态 bandit 条件下，Qs 收敛证明
 
@@ -610,6 +617,7 @@ $$
 \end{alignedat}
 $$
 
-## 深度强化学习算法分类
+## 深度强化学习网络
 
-![深度强化学习算法分类](./chapter_10/figures//深度强化学习算法分类.iodraw.png)
+**Actor-Critic 网络结构**
+![Actor-Critic 网络结构](./figures/actor-critic神经网络计算流程.iodraw.png)
