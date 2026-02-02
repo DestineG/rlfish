@@ -1,3 +1,7 @@
+## 记
+- 暂时完结，TRPO，PPO原理有些许复杂，需要后续仔细研究
+- 先找一些项目练练手
+
 ## 环境
 
 ``` bash
@@ -596,7 +600,7 @@ $$
 
 **所以，引入 baseline 不会改变梯度的期望，只会让$G_{t}$的方差减小，从而提高训练的稳定性和效率。**
 
-### 四种梯度策略法
+### 五种梯度策略法
 
 **目标函数统一数学表达式**
 
@@ -606,13 +610,14 @@ $$
 \end{aligned}
 $$
 
-**四种方法的 $\delta_{t}$ 定义**
+**五种方法的 $\delta_{t}$ 定义**
 
 $$
 \begin{alignedat}{2}
 \delta_{t} &= G_{\tau} \qquad && \text{基础策略梯度法} \\
 \delta_{t} &= G_{t} \qquad && \text{REINFORCE} \\
 \delta_{t} &= G_{t} - b(s_t) \qquad && \text{带基线 REINFORCE} \\
+\delta_{t} &= G_{t} - V(s_t) \qquad && \text{优势函数 REINFORCE} \\
 \delta_{t} &= \left[ r_{t} + \gamma V(s_{t+1}) \right] - V(s_{t}) \qquad && \text{Actor-Critic}
 \end{alignedat}
 $$
