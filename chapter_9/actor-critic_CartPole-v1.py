@@ -1,5 +1,6 @@
 import torch
 import gymnasium as gym
+from collections import deque
 
 
 class PolicyNet(torch.nn.Module):
@@ -73,6 +74,7 @@ def train(episodes=500, device="cpu"):
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.n
     agent = ActorCriticAgent(state_dim, action_dim, device)
+    recent_rewards = deque(maxlen=10)
     for ep in range(episodes):
         state, _ = env.reset()
         done = False
@@ -87,9 +89,15 @@ def train(episodes=500, device="cpu"):
 
             state = next_state
             total_reward += reward
+        recent_rewards.append(total_reward)
+        avg_reward = sum(recent_rewards) / len(recent_rewards)
 
         if (ep + 1) % 5 == 0:
             print(f"Episode {ep + 1}, Total Reward: {total_reward}")
+
+        if avg_reward >= 450.0 and len(recent_rewards) == 10:
+            print(f"Solved in episode {ep + 1}!")
+            break
     return agent
 
 
@@ -124,5 +132,5 @@ def play_trained_agent(agent, episodes=3, render_mode="human", device="cpu"):
 
 if __name__ == "__main__":
     device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-    trained_agent = train(episodes=1000, device=device)
+    trained_agent = train(episodes=2000, device=device)
     play_trained_agent(trained_agent, episodes=3, render_mode="human", device=device)
