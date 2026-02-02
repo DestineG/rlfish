@@ -621,3 +621,9 @@ $$
 
 **Actor-Critic 网络结构**
 ![Actor-Critic 网络结构](./figures/actor-critic神经网络计算流程.iodraw.png)
+
+**A3C 网络结构(Aynchronous Advantage Actor-Critic)**
+![A3C 网络结构](./figures/A3C.iodraw.png)
+
+**A2C 网络结构(Advantage Actor-Critic)**
+![A2C 网络结构](./figures/A2C.iodraw.png)
