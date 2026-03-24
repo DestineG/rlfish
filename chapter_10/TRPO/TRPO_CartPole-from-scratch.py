@@ -104,9 +104,9 @@ class TRPOAgent:
         log_probs = torch.log(probs.gather(1, actions_tensor))
         old_log_probs = log_probs.detach()
 
-        # 计算 θ 梯度
+        # 计算 ∇_θ(L(θ) - η(θ_old)) 以及 在旧策略处的优势函数加权和
         ratio = torch.exp(log_probs - old_log_probs)
-        # NOTE: L(θ) = E[ (π_θ(a|s) / π_old(a|s)) * A ] = E[ exp(log π_θ(a|s) - log π_old(a|s)) * A ]
+        # NOTE: L(θ) - η(θ_old) = E[ (θ(a|s) / θ_old(a|s)) * A ] = E[ exp(log θ(a|s) - log θ_old(a|s)) * A ]
         surrogate_loss = torch.mean(ratio * advantages)
         grads = torch.autograd.grad(surrogate_loss, self.policy.parameters())
         # 将梯度展平为一个向量
@@ -131,7 +131,7 @@ class TRPOAgent:
             with torch.no_grad():
                 new_probs = self.policy(states_tensor)
                 new_log_probs = torch.log(new_probs.gather(1, actions_tensor))
-                # NOTE: L(θ) = E[ (π_θ(a|s) / π_old(a|s)) * A ] = E[ exp(log π_θ(a|s) - log π_old(a|s)) * A ]
+                # NOTE: L(θ) - η(θ_old) = E[ (θ(a|s) / θ_old(a|s)) * A ] = E[ exp(log θ(a|s) - log θ_old(a|s)) * A ]
                 new_surrogate_loss = torch.mean(torch.exp(new_log_probs - old_log_probs) * advantages)
                 kl_divergence = torch.sum(probs * torch.log(probs / (new_probs + 1e-8)), dim=1).mean()
 
