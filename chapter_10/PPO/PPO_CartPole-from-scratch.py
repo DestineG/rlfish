@@ -99,12 +99,27 @@ class PPOAgent:
         advantages = Qs_tensor - state_values.detach()
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # 计算 log_probs
-        # (T, state_dim) -> (T, action_dim)
-        probs = self.policy(states_tensor)
-        # gather 根据 actions_tensor 中的动作索引从 probs 中选择对应的概率值，并计算 log 概率
-        log_probs = torch.log(probs.gather(1, actions_tensor))
-        old_log_probs = log_probs.detach()
+        states_tensor = states_tensor.detach()
+        actions_tensor = actions_tensor.detach()
+
+        # 计算 old_log_probs
+        with torch.no_grad():
+            probs = self.policy(states_tensor)
+            log_probs = torch.log(probs.gather(1, actions_tensor))
+            old_log_probs = log_probs.detach()
+
+        for _ in range(4):  # PPO 多次更新
+
+            current_probs = self.policy(states_tensor)
+            log_probs = torch.log(current_probs.gather(1, actions_tensor))
+
+            ratio = torch.exp(log_probs - old_log_probs)
+            surr1 = ratio * advantages
+            surr2 = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * advantages
+            surrogate_loss = -torch.mean(torch.min(surr1, surr2))
+            self.policy.zero_grad()
+            surrogate_loss.backward()
+            self.policy_optimizer.step()
 
 
         # ############# PPO Clip_v1 的更新步骤 #############
@@ -119,20 +134,6 @@ class PPOAgent:
         # self.policy.zero_grad()
         # surrogate_loss.backward()
         # self.policy_optimizer.step()
-
-
-        ############# PPO Clip_v2 的更新步骤 #############
-        # min(θ(a|s) / θ_old(a|s) * A, clip(θ(a|s) / θ_old(a|s), 1 - ε, 1 + ε) * A)
-
-        # 计算 ∇_θ(L(θ) - η(θ_old)) 以及 在旧策略处的优势函数加权和
-        ratio = torch.exp(log_probs - old_log_probs)
-        surr1 = ratio * advantages
-        surr2 = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * advantages
-        # NOTE: L(θ) - η(θ_old) = E[ (θ(a|s) / θ_old(a|s)) * A ] = E[ exp(log θ(a|s) - log θ_old(a|s)) * A ]
-        surrogate_loss = -torch.mean(torch.min(surr1, surr2))
-        self.policy.zero_grad()
-        surrogate_loss.backward()
-        self.policy_optimizer.step()
 
 
         ############# TRPO 的更新步骤 #############
