@@ -1,19 +1,25 @@
 ---
-
+title: Trust Region Policy Optimization (TRPO)
+date: 2026-03-25
+tags:
+  - TRPO
+  - RL
 ---
 
-## TRPO算法数学证明
+## TRPO 算法数学证明
 
 ### $\eta(\tilde{\pi}) - \eta(\pi) = \mathbb{E}_{\tau_{\tilde{\pi}}}\left[\sum\limits_{t=0}^{\infty} \gamma^t A_{\pi}(s_t, a_t)\right]$ 证明
 
 **策略 $\pi$ 下的轨迹 $\tau_{\pi}$ 定义**
-$$\tau_{\pi} = (s_0, a_0, r_0, s_1, a_1, r_1, \ldots)$$
+$$
+\tau_{\pi} = (s_0, a_0, r_0, s_1, a_1, r_1, \ldots)
+$$
 
 **策略 $\pi$ 下的轨迹回报 $J(\tau_{\pi})$ 定义**
 $$J(\tau_{\pi}) = \sum_{t=0}^{\infty} \gamma^t r_t$$
 
 **策略 $\pi$ 下的轨迹期望回报 $\eta(\pi)$ 定义**
-$$\eta(\pi) = \mathbb{E}[J(\tau_{\pi})] = \mathbb{E}_{\tau_{\pi}}\left[\sum_{t=0}^{\infty} \gamma^t r_t\right]$$
+$$\eta(\pi) = \mathbb{E}[J(\tau_{\pi})] = \mathbb{E}_{\tau_{\pi}}\left[\sum_{t=0}^{\infty} \gamma^t r_t\right] \tag{0}$$
 
 **$\eta(\pi)$ 与 $V_{\pi}$ 的关系**
 
@@ -86,6 +92,8 @@ $$
 $$
 
 ### $L_{\pi}(\tilde{\pi})$ 定义
+
+目标函数 $\eta_{\pi}(\tilde{\pi})$ 涉及新策略的状态访问测度 $\rho_{\tilde{\pi}}(s)$，这导致优化过程中存在不可知的采样分布。通过引入替代目标 $L_{\pi}(\tilde{\pi})$，可以将优化空间转换至旧策略 $\pi$ 对应的已知分布上
 
 **由 (8) 和 (10) 可推**
 $$
@@ -386,7 +394,7 @@ $$
 在得到共轭梯度解 $x \approx H_{kl}^{-1} g_{l}$ 后，需要确定在该方向上能走多远，并确保更新后的策略满足原始的非线性约束。
 
 #### 计算最大步长 (Maximum Step Length)
-为了满足约束 $\frac{1}{2} \Delta \theta^T H_{kl} \Delta \theta \le \delta$，我们令更新量 $\Delta \theta = \beta x$。将此代入约束等式中：
+为了满足约束 $\frac{1}{2} \nabla_{\theta}^{T} H_{kl} \nabla_{\theta} \le \delta$，令更新量 $\Delta \theta = \beta x$。将此代入约束等式中：
 $$
 \begin{equation}
 \frac{1}{2} (\beta x)^T H_{kl} (\beta x) = \delta \Rightarrow \frac{1}{2} \beta^2 (x^T H_{kl} x) = \delta
@@ -410,13 +418,311 @@ $$
    * **约束满足**：$D_{KL}(\pi_{\theta_{old}} \| \pi_{\theta_{try}}) \le \delta$
 3. **判定**：如果上述两个条件同时满足，则停止搜索，令 $\theta_{new} = \theta_{try}$。如果迭代多次仍未找到合适步长，则放弃本次更新，保持 $\theta_{new} = \theta_{old}$。
 
-#### 完整算法逻辑流
+## 证明流程
+
+- (2)~(8) 定义 $\eta(\pi)$ 和 $\eta(\tilde{\pi})$
+- (16) 证明在旧策略 $\pi$ 处优化 $L_{\pi}(\tilde{\pi})$ 等同于优化 $\eta(\tilde{\pi})$
+- (21) 证明 $|\eta(\tilde{\pi}) - L_{\pi}(\tilde{\pi})| \le \frac{4 \alpha^{2} \gamma \epsilon}{(1 - \gamma)^2}$:
+  - 引入下界 $L_{\pi}(\tilde{\pi}) - \frac{4 \alpha^{2} \gamma \epsilon}{(1 - \gamma)^2}$
+- (22)~(29) 优化目标转换:
+  - $\max_{\tilde{\pi}} L_{\pi}(\tilde{\pi}), \quad \mathbb{E}_{s \sim \rho_{\pi}}[D_{KL}(\tilde{\pi}(\cdot|s) || \pi(\cdot|s))] \le \delta \Rightarrow \max_{\theta} \nabla_{\theta}^{T} g_{l} \quad \text{s.t.} \quad \frac{1}{2} \nabla_{\theta}^{T} H_{kl} \nabla_{\theta} \le \delta$
+- (33) 使用 KKT 条件求解优化目标
+- (34)~(35) 使用共轭梯度法求解优化目标: 优化方向计算
+- (36)~(37) 计算最大步长并进行回溯线性搜索: 优化步长计算
+
+![trpo_flow](./asserts/trpo_证明流程.png)
+
+## 完整算法逻辑流
 
 总结 TRPO 的完整单步更新逻辑：
-1. **采样**：利用旧策略 $\pi_{\theta_{old}}$ 采集轨迹，计算优势函数 $A_{\pi}$。
-2. **构建设想**：计算代理目标梯度 $g_l$ 和 KL 散度的 Hessian 向量乘积算子 $H_{kl}$。
-3. **求解方向**：通过 **CG** 算法解 $H_{kl} x = g_l$。
-4. **定标**：计算最大步长 $\beta$ 得到满步更新量 $\Delta \theta_{max}$。
-5. **探测**：通过 **Line Search** 寻找既能提升目标又能严守 KL 约束的步长，完成更新。
+1. **采样**：利用旧策略 $\pi_{\theta_{old}}$ 采集轨迹，计算优势函数 $A_{\pi}$
+2. **梯度计算**：计算代理目标梯度 $g_l$
+3. **求解方向**：通过 **CG** 算法解 $H_{kl} x = g_l$
+4. **定标**：计算最大步长 $\beta$ 得到满步更新量 $\Delta \theta_{max}$
+5. **探测**：通过 **Line Search** 寻找既能提升目标又能严守 KL 约束的步长，完成更新
 
 ## TRPO 算法代码示例
+
+``` python
+import torch
+import torch.nn as nn
+import torch.functional as F
+import gymnasium as gym
+from collections import deque
+import numpy as np
+
+import sys
+
+
+class VNet(nn.Module):
+    def __init__(self, state_dim):
+        super(VNet, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(state_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, 1)
+        )
+
+    def forward(self, x):
+        return self.fc(x)
+
+class PolicyNet(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(PolicyNet, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(state_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, action_dim),
+            nn.Softmax(dim=-1)
+        )
+
+    def forward(self, x):
+        return self.fc(x.view(x.size(0), -1))
+
+class TRPOAgent:
+    def __init__(self, state_dim, action_dim, device="cpu"):
+        self.device = device
+        self.gamma = 0.99           # 折扣因子
+        self.kl_constraint = 0.01   # KL 散度约束
+        self.ls_alpha = 0.5         # 线性搜索衰减系数
+
+        self.vnet = VNet(state_dim).to(self.device)
+        self.policy = PolicyNet(state_dim, action_dim).to(self.device)
+        self.vnet_optimizer = torch.optim.Adam(self.vnet.parameters(), lr=1e-3)
+        self.memory = []
+
+    def select_action(self, state):
+        # (state_dim,) -> (1, state_dim)
+        state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+        with torch.no_grad():
+            probs = self.policy(state)
+        # 构造离散动作的概率分布
+        dist = torch.distributions.Categorical(probs)
+        # 采样动作
+        action = dist.sample()
+        # 返回动作的索引和对应的 log 概率
+        return action.item(), dist.log_prob(action).item()
+    
+    def add(self, state, action, reward, done):
+        self.memory.append((state, action, reward, done))
+    
+    def update(self):
+        # tuple[numpy.ndarray], tuple[int], tuple[float], tuple[bool]
+        states, actions, rewards, dones = zip(*self.memory)
+        states_tensor = torch.tensor(states, dtype=torch.float32, device=self.device)
+        actions_tensor = torch.tensor(actions, dtype=torch.int64, device=self.device)
+        if len(states_tensor.shape) == 1:
+            states_tensor = states_tensor.unsqueeze(1)
+        if len(actions_tensor.shape) == 1:
+            actions_tensor = actions_tensor.unsqueeze(1)
+
+        # 计算每个时刻的动作价值
+        Qs = []
+        next_state_value = 0
+        for reward, done in zip(reversed(rewards), reversed(dones)):
+            # 此处不需要使用 done 标志来重置 next_state_value，因为在此项目中的memory始终只有一条完整的轨迹
+            next_state_value = reward + self.gamma * next_state_value
+            Qs.insert(0, next_state_value)
+        Qs_tensor = torch.tensor(Qs, dtype=torch.float32, device=self.device)
+        if len(Qs_tensor.shape) == 1:
+            Qs_tensor = Qs_tensor.unsqueeze(1)
+
+        # 更新值函数网络
+        # (T, state_dim) -> (T, 1)
+        state_values = self.vnet(states_tensor)
+        v_loss = torch.nn.functional.mse_loss(state_values, Qs_tensor)
+        self.vnet_optimizer.zero_grad()
+        v_loss.backward()
+        self.vnet_optimizer.step()
+
+        # 计算优势函数
+        advantages = Qs_tensor - state_values.detach()
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+        # 计算 log_probs
+        # (T, state_dim) -> (T, action_dim)
+        probs = self.policy(states_tensor)
+        # gather 根据 actions_tensor 中的动作索引从 probs 中选择对应的概率值，并计算 log 概率
+        log_probs = torch.log(probs.gather(1, actions_tensor))
+        old_log_probs = log_probs.detach()
+
+        # 计算 ∇_θ(L(θ) - η(θ_old)) 以及 在旧策略处的优势函数加权和
+        ratio = torch.exp(log_probs - old_log_probs)
+        # NOTE: L(θ) - η(θ_old) = E[ (θ(a|s) / θ_old(a|s)) * A ] = E[ exp(log θ(a|s) - log θ_old(a|s)) * A ]
+        surrogate_loss = torch.mean(ratio * advantages)
+        grads = torch.autograd.grad(surrogate_loss, self.policy.parameters())
+        # 将梯度展平为一个向量
+        loss_grad = torch.cat([g.view(-1) for g in grads]).detach()
+
+        # 共轭梯度法求解 θ 更新方向 H^-1 * g
+        step_direction = self.cg(loss_grad, states_tensor)
+
+        # 根据 KL 约束计算初始步长
+        step_size = self.get_step_size(step_direction, states_tensor)
+
+        # 线性搜索找到最优的更新步长
+        full_step = step_direction * step_size
+        old_params = self.get_flat_params(self.policy)
+        success = False
+        for i in range(10):
+            # 参数更新步长从最大步长开始逐渐减小
+            new_params = old_params + (self.ls_alpha ** i) * full_step
+            self.set_flat_params(self.policy, new_params)
+
+            # 计算新的 surrogate loss 和 KL 散度，确保满足约束并且有改进(比较新旧优势函数的加权平均)
+            with torch.no_grad():
+                new_probs = self.policy(states_tensor)
+                new_log_probs = torch.log(new_probs.gather(1, actions_tensor))
+                # NOTE: L(θ) - η(θ_old) = E[ (θ(a|s) / θ_old(a|s)) * A ] = E[ exp(log θ(a|s) - log θ_old(a|s)) * A ]
+                new_surrogate_loss = torch.mean(torch.exp(new_log_probs - old_log_probs) * advantages)
+                kl_divergence = torch.sum(probs * torch.log(probs / (new_probs + 1e-8)), dim=1).mean()
+
+                if kl_divergence < self.kl_constraint and new_surrogate_loss > surrogate_loss:
+                    success = True
+                    break
+
+        # 如果没有找到满足条件的更新步长，恢复原始参数
+        if not success:
+            self.set_flat_params(self.policy, old_params)
+        
+        self.memory = []
+
+    def hvp(self, vector, states):
+        '''计算 Hessian-Vector Product H * vector，其中 H 是 KL 散度的 Hessian'''
+        # KL(θ_old || θ)
+        self.policy.zero_grad()
+        probs = self.policy(states)
+        old_probs = probs.detach()
+        kl = torch.sum(old_probs * torch.log(old_probs / (probs + 1e-8)), dim=1).mean()
+
+        # ∇_θ KL(θ_old || θ)
+        kl_grad = torch.autograd.grad(kl, self.policy.parameters(), create_graph=True)
+        # 将梯度展平为一个向量
+        flat_kl_grad = torch.cat([g.view(-1) for g in kl_grad])
+
+        # ∇_θ KL(θ_old || θ) · vector
+        fk_grad_vector = (flat_kl_grad * vector).sum()
+
+        # ∇_θ (∇_θ KL(θ_old || θ) · vector)
+        hvp = torch.autograd.grad(fk_grad_vector, self.policy.parameters())
+        # 将 Hessian-Vector Product 展平为一个向量
+        flat_hvp = torch.cat([g.contiguous().view(-1) for g in hvp]).detach()
+
+        return flat_hvp + 0.1 * vector
+
+
+    def cg(self, grad, states, nsteps=10):
+        x = torch.zeros_like(grad)
+        r = grad.clone()
+        p = r.clone()
+        rdotr = torch.dot(r, r)
+        for _ in range(nsteps):
+            hvp = self.hvp(p, states)
+            alpha = rdotr / (torch.dot(p, hvp) + 1e-8)
+            x += alpha * p
+            r -= alpha * hvp
+            new_rdotr = torch.dot(r, r)
+            if new_rdotr < 1e-10: break
+            beta = new_rdotr / rdotr
+            p = r + beta * p
+            rdotr = new_rdotr
+        return x
+    
+    def get_step_size(self, step_direction, states):
+        '''
+        根据共轭梯度法的结果在约束条件下计算初始步长
+
+        1/2 * (β * step_direction)^T * H * (β * step_direction) <= kl_constraint
+
+        β = sqrt(kl_constraint / [1/2 * (step_direction^T * H * step_direction)])
+        '''
+        # 1/2 * (step_direction^T * H * step_direction)
+        shs = 0.5 * torch.dot(step_direction, self.hvp(step_direction, states))
+
+        # β = sqrt(kl_constraint / shs)
+        beta = torch.sqrt(self.kl_constraint / (shs + 1e-8))
+        return beta
+
+    def get_flat_params(self, model):
+        # 将模型参数展平为一个向量
+        params = [p.view(-1) for p in model.parameters()]
+        return torch.cat(params)
+
+    def set_flat_params(self, model, flat_params):
+        # 将展平的参数向量重新赋值给模型参数
+        prev_ind = 0
+        for p in model.parameters():
+            flat_size = p.numel()
+            p.data.copy_(flat_params[prev_ind:prev_ind + flat_size].view(p.size()))
+            prev_ind += flat_size
+
+def train(episodes, device="cpu"):
+    env = gym.make("CartPole-v1")
+    agent = TRPOAgent(env.observation_space.shape[0], env.action_space.n, device=device)
+    recent_rewards = deque(maxlen=20)
+    for episode in range(episodes):
+        state, _ = env.reset()
+        done = False
+        total_reward = 0
+        while not done:
+            action, _ = agent.select_action(state)
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            agent.add(state, action, reward, done)
+            state = next_state
+            total_reward += reward
+        
+        agent.update()
+        if (episode + 1) % 5 == 0:
+            print(f"Episode {episode+1}, Reward: {total_reward}")
+        
+        recent_rewards.append(total_reward)
+        if len(recent_rewards) == 20 and np.mean(recent_rewards) >= 450.0:
+            print(f"Solved in {episode+1} episodes!")
+            break
+    return agent
+
+
+def play_trained_agent(agent, episodes=3, render_mode="human", device="cpu"):
+    """
+    使用训练好的策略梯度 agent 进行测试和可视化。
+    """
+    env = gym.make("CartPole-v1", render_mode=render_mode)
+    agent.policy.eval()  # 切换到评估模式（关闭 dropout 等）
+
+    for ep in range(episodes):
+        state, _ = env.reset()
+        done = False
+        total_reward = 0
+        step = 0
+        print(f"\n🎮 Episode {ep + 1} start")
+
+        while not done:
+            state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(device)
+            with torch.no_grad():
+                probs = agent.policy(state_tensor)
+                action = torch.argmax(probs, dim=1).item()  # 选择概率最高的动作
+
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            state = next_state
+            total_reward += reward
+            step += 1
+
+        print(f"✅ Episode {ep + 1} finished | Steps: {step}, Total reward: {total_reward}")
+
+    env.close()
+    agent.policy.train()  # 恢复训练模式
+
+
+if __name__ == "__main__":
+    # device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+    device = torch.device("cpu")
+    agent = train(500, device=device)
+    play_trained_agent(agent, episodes=3, render_mode="human", device=device)
+
+```
