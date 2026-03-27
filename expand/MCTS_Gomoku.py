@@ -80,7 +80,7 @@ class MCTSNode:
         self.children = []
         self.visits = 0
         self.value = 0.0
-        self.gamma = 0.99 # 折扣因子: 越小越倾向于快速胜利
+        # self.gamma = 0.99 # 折扣因子: 越小越倾向于快速胜利
 
     def is_fully_expanded(self):
         return len(self.untried_moves) == 0
@@ -106,7 +106,7 @@ class MCTSNode:
         self.visits += 1
         if result == 0: self.value += 0.5
         elif result == self.game.last_player: self.value += 1.0
-        if self.parent: self.parent.update(result * self.gamma) # 递归更新父节点，应用折扣因子
+        if self.parent: self.parent.update(result) # 递归更新父节点
 
 # --- MCTS Algorithm ---
 def mcts_search(game, iters):
