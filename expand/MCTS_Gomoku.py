@@ -113,7 +113,7 @@ def mcts_search(game, iters):
         while node.is_fully_expanded() and node.children:
             node = node.best_child()
         
-        # 扩展阶段：如果节点未完全展开，随机选择一个未尝试的动作进行扩展
+        # 扩展阶段：如果游戏未结束且节点未完全展开，随机选择一个未尝试的动作进行扩展
         if not node.is_fully_expanded() and not node.game.check_win(node.game.last_player):
             node = node.expand()
         
@@ -124,76 +124,101 @@ def mcts_search(game, iters):
         node.update(result)
     return max(root.children, key=lambda c: c.visits).move
 
-# --- CLI Helper Functions ---
-def print_board(game):
-    rows, cols = game.map_size
-    symbols = {0: ".", 1: "X", 2: "O"}
-    
-    # 打印列坐标轴
-    header = "   " + " ".join(f"{j:1}" for j in range(cols))
-    print("\n" + header)
-    
-    for i, row in enumerate(game.board):
-        # 打印行坐标轴
-        row_str = f"{i:2} " + " ".join(symbols[cell] for cell in row)
-        print(row_str)
-    print()
+import pygame
+import sys
 
-def get_player_move(game):
-    """玩家输入处理"""
-    while True:
-        try:
-            prompt = f"Player {game.current_player} ({'X' if game.current_player==1 else 'O'}), enter move 'row col': "
-            move_input = input(prompt).strip().split()
-            
-            if len(move_input) != 2:
-                print("Error: Please enter exactly two numbers (e.g., '1 2').")
-                continue
+# --- 可视化常量配置 ---
+CELL_SIZE = 60
+LINE_WIDTH = 2
+BOARD_SIZE = 8
+SCREEN_SIZE = CELL_SIZE * (BOARD_SIZE + 1)
+COLORS = {
+    "BACKGROUND": (230, 190, 140), # 经典的木质棋盘色
+    "LINE": (0, 0, 0),
+    "PLAYER1": (20, 20, 20),      # 黑棋
+    "PLAYER2": (240, 240, 240),    # 白棋
+    "HIGHLIGHT": (200, 50, 50)     # 最后落子标记
+}
+
+class GomokuGUI:
+    def __init__(self, game, ai_player=2):
+        pygame.init()
+        self.screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
+        pygame.display.set_caption("MCTS Gomoku AI")
+        self.game = game
+        self.ai_player = ai_player
+        self.iters = 40000 # MCTS 迭代次数
+
+    def draw_board(self):
+        self.screen.fill(COLORS["BACKGROUND"])
+        # 画网格线
+        for i in range(BOARD_SIZE):
+            # 横线
+            pygame.draw.line(self.screen, COLORS["LINE"], 
+                             (CELL_SIZE, (i + 1) * CELL_SIZE), 
+                             (BOARD_SIZE * CELL_SIZE, (i + 1) * CELL_SIZE), LINE_WIDTH)
+            # 纵线
+            pygame.draw.line(self.screen, COLORS["LINE"], 
+                             ((i + 1) * CELL_SIZE, CELL_SIZE), 
+                             ((i + 1) * CELL_SIZE, BOARD_SIZE * CELL_SIZE), LINE_WIDTH)
+
+        # 画棋子
+        for r in range(BOARD_SIZE):
+            for c in range(BOARD_SIZE):
+                center = ((c + 1) * CELL_SIZE, (r + 1) * CELL_SIZE)
+                if self.game.board[r][c] == 1:
+                    pygame.draw.circle(self.screen, COLORS["PLAYER1"], center, CELL_SIZE // 2 - 5)
+                elif self.game.board[r][c] == 2:
+                    pygame.draw.circle(self.screen, COLORS["PLAYER2"], center, CELL_SIZE // 2 - 5)
+        
+        # 标记最后一步
+        if self.game.last_move:
+            r, c = self.game.last_move
+            center = ((c + 1) * CELL_SIZE, (r + 1) * CELL_SIZE)
+            pygame.draw.circle(self.screen, COLORS["HIGHLIGHT"], center, 5)
+
+    def run(self):
+        running = True
+        game_over = False
+
+        while running:
+            self.draw_board()
+            pygame.display.flip()
+
+            # AI 回合逻辑
+            if not game_over and self.game.current_player == self.ai_player:
+                print(f"AI is thinking...")
+                move = mcts_search(self.game, iters=self.iters)
+                if self.game.apply_move(move):
+                    print(f"AI Wins!")
+                    game_over = True
+                elif not self.game.get_possible_moves():
+                    print("Draw!")
+                    game_over = True
+
+            # 事件处理
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
                 
-            move = tuple(map(int, move_input))
-            if move in game.get_possible_moves():
-                return move
-            else:
-                print(f"Error: Move {move} is invalid or already taken.")
-        except ValueError:
-            print("Error: Please enter valid integers.")
+                if not game_over and event.type == pygame.MOUSEBUTTONDOWN and self.game.current_player != self.ai_player:
+                    x, y = event.pos
+                    # 将点击坐标映射为行列
+                    c = round(x / CELL_SIZE) - 1
+                    r = round(y / CELL_SIZE) - 1
+                    
+                    if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and self.game.board[r][c] == 0:
+                        if self.game.apply_move((r, c)):
+                            print("Player Wins!")
+                            game_over = True
+                        elif not self.game.get_possible_moves():
+                            print("Draw!")
+                            game_over = True
 
-def main():
-    # 初始化
-    game = Game()
-    # 动态获取配置
-    iters = 30000 if game.map_size[0] > 3 else 800 
-    
-    print(f"--- MCTS Game Engine Initialized ---")
-    print(f"Board Size: {game.map_size[0]}x{game.map_size[1]}")
-    
-    # 快速切换谁是 AI
-    # ai_players = [2] 表示玩家 1 手操，玩家 2 是 AI
-    ai_players = [2] 
-
-    while True:
-        print_board(game)
-        
-        # 检查是否为 AI 回合
-        if game.current_player in ai_players:
-            print(f"AI (Player {game.current_player}) is thinking (iters={iters})...")
-            move = mcts_search(game, iters=iters)
-            print(f"AI chose: {move}")
-        else:
-            move = get_player_move(game)
-
-        # 执行动作并检查胜负
-        is_win = game.apply_move(move)
-        
-        if is_win:
-            print_board(game)
-            print(f"Game Over! Player {game.last_player} wins!")
-            break
-        
-        if not game.get_possible_moves():
-            print_board(game)
-            print("Game Over! It's a draw!")
-            break
+        pygame.quit()
+        sys.exit()
 
 if __name__ == "__main__":
-    main()
+    my_game = Game(size=BOARD_SIZE)
+    gui = GomokuGUI(my_game, ai_player=2)
+    gui.run()
