@@ -58,6 +58,11 @@ class Game:
 
     def simulate(self):
         temp_game = self.clone()
+
+        # 如果 expand 阶段已经导致游戏结束，直接返回结果
+        if temp_game.last_move and temp_game.check_win(temp_game.last_player):
+                return temp_game.last_player
+
         while True:
             moves = temp_game.get_possible_moves()
             if not moves: return 0
@@ -116,8 +121,8 @@ def mcts_search(game, iters):
         # 扩展阶段：如果游戏未结束且节点未完全展开，随机选择一个未尝试的动作进行扩展
         if not node.is_fully_expanded() and not node.game.check_win(node.game.last_player):
             node = node.expand()
-        
-        # 模拟阶段：从新节点开始，随机模拟游戏直到结束
+
+        # 模拟阶段：从当前节点开始，随机模拟游戏直到结束，记录结果
         result = node.game.simulate()
 
         # 回传阶段：将模拟结果回传给所有经过的节点
