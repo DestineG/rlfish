@@ -65,6 +65,7 @@ def load_gomoku_data(file_path):
 
 
 samples = load_gomoku_data('train_data/gomoku_game.jsonl')
+print(f"Loaded {len(samples)} training samples from data file.")
 
 # ------------------------------------------------------------
 # Data loading for Training
@@ -73,24 +74,44 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 class GomokuDataset(Dataset):
-    def __init__(self, pairs):
+    def __init__(self, pairs, split="train"):
         self.pairs = pairs
+        self.split = split
 
     def __len__(self):
         return len(self.pairs)
 
     def __getitem__(self, idx):
         item = self.pairs[idx]
-        # TODO: 可以考虑进行数据增强
-        state = torch.from_numpy(item['state']).float()
-        policy = torch.from_numpy(item['visits'].flatten()).float()
-        value = torch.tensor([item['victory']], dtype=torch.float32)
-        return state, policy, value
+        state = item['state']  # (C, H, W)
+        probs = item['visits'] # (H, W)
+        value = item['victory']
+
+
+        if self.split == "train":
+            # 随机旋转 (0, 90, 180, 270) 和 翻转
+            n = np.random.randint(0, 8)
+            # 旋转
+            state = np.rot90(state, n % 4, axes=(1, 2))
+            probs = np.rot90(probs, n % 4)
+            # 翻转
+            if n >= 4:
+                state = np.flip(state, axis=2)
+                probs = np.flip(probs, axis=1)
+
+        return torch.from_numpy(state.copy()).float(), \
+            torch.from_numpy(probs.copy().flatten()).float(), \
+            torch.tensor([value], dtype=torch.float32)
 
 
 # 转换并加载
-dataset = GomokuDataset(samples)
-dataloader = DataLoader(dataset, batch_size=16, shuffle=True)
+split_ratio = 0.9
+split_idx = int(len(samples) * split_ratio)
+train_dataset = GomokuDataset(samples[:split_idx], split="train")
+val_dataset = GomokuDataset(samples[split_idx:], split="val")
+train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+val_dataloader = DataLoader(val_dataset, batch_size=16, shuffle=False)
+print(f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}")
 
 # ------------------------------------------------------------
 # Model Definition
@@ -189,73 +210,99 @@ if not os.path.exists(checkpoint_dir):
 model_path = os.path.join(checkpoint_dir, 'gomoku_policy_value_net.pth')
 plot_path = os.path.join(checkpoint_dir, 'train_loss_curve.png')
 
-criterion_policy = nn.CrossEntropyLoss()
-criterion_value = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+num_epochs = 100
+lr = 0.001
 
+criterion_policy = nn.KLDivLoss(reduction='batchmean')
+criterion_value = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=lr)
+scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
+
+# 更新 history 结构
 history = {
-    'policy_loss': [],
-    'value_loss': [],
-    'total_loss': []
+    'train_policy': [], 'train_value': [], 'train_total': [],
+    'val_policy': [], 'val_value': [], 'val_total': []
 }
 
-num_epochs = 100
 for epoch in range(num_epochs):
+    # 训练阶段
     model.train()
-    total_policy_loss = 0.0
-    total_value_loss = 0.0
+    total_train_policy = 0.0
+    total_train_value = 0.0
     
-    # TODO: 添加验证集评估
-    for states, policies, values in dataloader:
+    for states, policies, values in train_dataloader:
         optimizer.zero_grad()
         policy_logits, value_preds = model(states)
         
-        # 计算损失
-        policy_loss = criterion_policy(policy_logits, torch.argmax(policies, dim=1))
+        log_probs = F.log_softmax(policy_logits, dim=1)
+        policy_loss = criterion_policy(log_probs, policies)
         value_loss = criterion_value(value_preds.squeeze(), values.squeeze())
         loss = policy_loss + value_loss
         
-        # 反向传播
         loss.backward()
         optimizer.step()
         
-        total_policy_loss += policy_loss.item()
-        total_value_loss += value_loss.item()
+        total_train_policy += policy_loss.item()
+        total_train_value += value_loss.item()
 
-    avg_policy = total_policy_loss / len(dataloader)
-    avg_value = total_value_loss / len(dataloader)
-    avg_total = avg_policy + avg_value
+    scheduler.step()
+
+    # 验证阶段
+    model.eval()
+    total_val_policy = 0.0
+    total_val_value = 0.0
     
-    history['policy_loss'].append(avg_policy)
-    history['value_loss'].append(avg_value)
-    history['total_loss'].append(avg_total)
+    with torch.no_grad():
+        for states, policies, values in val_dataloader:
+            policy_logits, value_preds = model(states)
+            
+            log_probs = F.log_softmax(policy_logits, dim=1)
+            v_policy_loss = criterion_policy(log_probs, policies)
+            v_value_loss = criterion_value(value_preds.squeeze(), values.squeeze())
+            
+            total_val_policy += v_policy_loss.item()
+            total_val_value += v_value_loss.item()
+
+    # 计算平均值
+    avg_train_p = total_train_policy / len(train_dataloader)
+    avg_train_v = total_train_value / len(train_dataloader)
+    avg_val_p = total_val_policy / len(val_dataloader)
+    avg_val_v = total_val_value / len(val_dataloader)
+
+    history['train_policy'].append(avg_train_p)
+    history['train_value'].append(avg_train_v)
+    history['train_total'].append(avg_train_p + avg_train_v)
+    history['val_policy'].append(avg_val_p)
+    history['val_value'].append(avg_val_v)
+    history['val_total'].append(avg_val_p + avg_val_v)
 
     if (epoch + 1) % 10 == 0 or epoch == 0:
-        print(f"Epoch {epoch+1}/{num_epochs} | Policy: {avg_policy:.4f} | Value: {avg_value:.4f} | Total: {avg_total:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs} | "
+              f"Train Loss: {avg_train_p+avg_train_v:.4f} | "
+              f"Val Loss: {avg_val_p+avg_val_v:.4f} | "
+              f"LR: {scheduler.get_last_lr()[0]:.6f}")
 
-    torch.save(model.state_dict(), model_path)
+torch.save(model.state_dict(), model_path)
 
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
 
-# 创建子图
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))
-
-# Policy Loss
-ax1.plot(history['policy_loss'], color='blue', label='Policy Loss (CrossEntropy)')
-ax1.set_title('Policy Network Loss')
-ax1.set_xlabel('Epoch')
+# Policy Loss (Train vs Val)
+ax1.plot(history['train_policy'], 'b-', label='Train Policy Loss')
+ax1.plot(history['val_policy'], 'b--', alpha=0.6, label='Val Policy Loss')
+ax1.set_title('Policy Network Loss (KL Divergence)')
 ax1.set_ylabel('Loss')
 ax1.legend()
 ax1.grid(True, linestyle='--', alpha=0.5)
 
-# Value Loss
-ax2.plot(history['value_loss'], color='red', label='Value Loss (MSE)')
-ax2.set_title('Value Network Loss')
+# Value Loss (Train vs Val)
+ax2.plot(history['train_value'], 'r-', label='Train Value Loss')
+ax2.plot(history['val_value'], 'r--', alpha=0.6, label='Val Value Loss')
+ax2.set_title('Value Network Loss (MSE)')
 ax2.set_xlabel('Epoch')
 ax2.set_ylabel('Loss')
 ax2.legend()
 ax2.grid(True, linestyle='--', alpha=0.5)
 
 plt.tight_layout()
-
 plt.savefig(plot_path)
 plt.show()
