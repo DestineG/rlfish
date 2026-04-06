@@ -137,7 +137,7 @@ def mcts_search(game, model, device, iters=400, c_puct=1.5, top_k=10, temperatur
     filtered_visits[top_k_indices] = visits[top_k_indices]
 
     # 温度采样处理
-    if temperature < 1e-3:
+    if temperature < 1e-2:
         # 极低温度等同于 Argmax (选访问量绝对最大的)
         best_move = moves[np.argmax(visits)]
     else:
@@ -162,69 +162,96 @@ def mcts_search(game, model, device, iters=400, c_puct=1.5, top_k=10, temperatur
     return best_move, state
 
 # ------------------------------------------------------------
-# 3. 自我对弈采集器
+# 3. 模型评估器 (Model Evaluator)
 # ------------------------------------------------------------
-class SelfPlayCollector:
-    def __init__(self, model, device, board_size=8, iters=400):
-        self.model = model
+class ModelEvaluator:
+    def __init__(self, model_1, model_2, device, board_size=8, iters=400):
+        self.models = {1: model_1, 2: model_2}  # 映射玩家编号到模型
         self.device = device
         self.board_size = board_size
         self.iters = iters
 
-    def run_episode(self):
+    def play_game(self, m1_starts=True):
+        """
+        进行一场比赛
+        m1_starts: True 则 model_1 执黑(1), model_2 执白(2)
+                  False 则 model_2 执黑(1), model_1 执白(2)
+        """
         game = Game(size=self.board_size)
-        game_history = []
-        
+        # 确定当前对局中，1号玩家用哪个模型，2号玩家用哪个模型
+        current_models = {
+            1: self.models[1] if m1_starts else self.models[2],
+            2: self.models[2] if m1_starts else self.models[1]
+        }
+
         while True:
-            best_move, state = mcts_search(
-                game, self.model,
-                self.device, iters=self.iters
+            active_model = current_models[game.current_player]
+            
+            # 评估时温度设为 0 (极低)，只选访问量最高的动作，取消 top_k 限制或设大
+            best_move, _ = mcts_search(
+                game, active_model, self.device, 
+                iters=self.iters, temperature=5e-1
             )
-            game_history.append(state)
 
             if game.apply_move(best_move):
                 winner = game.last_player
                 break
             elif not game.get_possible_moves():
-                winner = 0
+                winner = 0 # 平局
                 break
         
-        return {
-            "board_size": self.board_size,
-            "winner": winner,
-            "total_moves": len(game_history),
-            "moves": game_history
-        }
+        # 转换为逻辑上的胜者：返回 1 代表 model_1 赢，2 代表 model_2 赢，0 平局
+        if winner == 0: return 0
+        if m1_starts:
+            return 1 if winner == 1 else 2
+        else:
+            return 1 if winner == 2 else 2
 
-def main(model_index=0, data_index=0, EPISODES=100, MCTS_ITERS=2000):
+def evaluate(model_idx_1, model_idx_2, num_games=20, iters=400):
     BOARD_SIZE = 8
-    MCTS_ITERS = MCTS_ITERS
-    EPISODES = EPISODES
-    DATA_PATH = f"train_data/self_play_data_{data_index}.jsonl"
-    MODEL_PATH = f"checkpoint/gomoku_policy_value_net_{model_index}.pth"
-    
-    os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
-    if os.path.exists(DATA_PATH):
-        os.remove(DATA_PATH)
-    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    model = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=BOARD_SIZE).to(device)
-    if os.path.exists(MODEL_PATH):
-        model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-        print(f"Loaded existing model.")
-    model.eval()
+    
+    # 1. 加载模型 1
+    path_1 = f"checkpoint/gomoku_policy_value_net_{model_idx_1}.pth"
+    model_1 = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=BOARD_SIZE).to(device)
+    model_1.load_state_dict(torch.load(path_1, map_location=device))
+    model_1.eval()
 
-    collector = SelfPlayCollector(model, device, board_size=BOARD_SIZE, iters=MCTS_ITERS)
+    # 2. 加载模型 2
+    path_2 = f"checkpoint/gomoku_policy_value_net_{model_idx_2}.pth"
+    model_2 = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=BOARD_SIZE).to(device)
+    model_2.load_state_dict(torch.load(path_2, map_location=device))
+    model_2.eval()
 
-    for ep in range(EPISODES):
-        print(f"Episode {ep+1}/{EPISODES} starting...")
-        game_result = collector.run_episode()
+    evaluator = ModelEvaluator(model_1, model_2, device, board_size=BOARD_SIZE, iters=iters)
+
+    m1_wins = 0
+    m2_wins = 0
+    draws = 0
+
+    print(f"Starting Evaluation: Model {model_idx_1} vs Model {model_idx_2}")
+    
+    for i in range(num_games):
+        # 轮流交替先手以示公平
+        m1_starts = (i % 2 == 0)
+        res = evaluator.play_game(m1_starts=m1_starts)
         
-        with open(DATA_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(game_result) + "\n")
-        
-        print(f"Finished. Winner: {game_result['winner']}, Moves: {game_result['total_moves']}")
+        if res == 1:
+            m1_wins += 1
+            winner_tag = f"M{model_idx_1}"
+        elif res == 2:
+            m2_wins += 1
+            winner_tag = f"M{model_idx_2}"
+        else:
+            draws += 1
+            winner_tag = "Draw"
+            
+        print(f"Game {i+1}/{num_games} | Winner: {winner_tag} | (M1 Starts: {m1_starts})")
 
+    win_rate = m1_wins / num_games
+    
+    return win_rate
+
+# 使用示例:
 # if __name__ == "__main__":
-#     main()
+#     evaluate(model_idx_1=10, model_idx_2=9, num_games=10, iters=800)

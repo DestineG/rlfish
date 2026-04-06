@@ -36,6 +36,10 @@ def load_gomoku_data(file_path):
                 # 构造策略目标
                 probs = np.zeros((board_size, board_size), dtype=np.float32)
                 visit_dict = move_step['visit_counts']
+                # print(sum(list(visit_dict.values())))
+                # print(f"Processing move {i+1}/{len(moves_history)}: visit counts = {visit_dict}")
+                # import sys
+                # sys.exit(0)  # 临时退出以检查数据格式
                 for pos_str, count in visit_dict.items():
                     r, c = map(int, pos_str.split(','))
                     probs[r][c] = count
@@ -108,12 +112,12 @@ class GomokuDataset(Dataset):
 # ------------------------------------------------------------
 # Training Logic
 # ------------------------------------------------------------
-def train():
+def train(model_index=0, data_index=0, num_epochs=100):
     # 配置路径
-    data_file = 'train_data/self_play_data.jsonl'
+    data_file = f'train_data/self_play_data_{data_index}.jsonl'
     checkpoint_dir = 'checkpoint'
-    model_path = os.path.join(checkpoint_dir, 'gomoku_policy_value_net.pth')
-    plot_path = os.path.join(checkpoint_dir, 'train_loss_curve.png')
+    model_path = os.path.join(checkpoint_dir, f'gomoku_policy_value_net_{model_index}.pth')
+    plot_path = os.path.join(checkpoint_dir, f'train_loss_curve_{model_index}.png')
 
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
@@ -149,7 +153,7 @@ def train():
         model.load_state_dict(torch.load(model_path, map_location=device))
         print("Resuming from existing checkpoint.")
 
-    num_epochs = 200
+    num_epochs = num_epochs
     lr = 0.001
     weights = [1.0, 10.0] # Policy vs Value loss weight
 
@@ -231,7 +235,7 @@ def train():
 
     plt.tight_layout()
     plt.savefig(plot_path)
-    plt.show()
+    # plt.show()
 
-if __name__ == "__main__":
-    train()
+# if __name__ == "__main__":
+#     train()

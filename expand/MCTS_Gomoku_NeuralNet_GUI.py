@@ -155,7 +155,7 @@ COLORS = {
 }
 
 class GomokuGUI:
-    def __init__(self, game, ai_player=2):
+    def __init__(self, game, ai_player=2, model_idx=-1):
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
         pygame.display.set_caption("AlphaZero Gomoku 人机对战")
@@ -170,6 +170,8 @@ class GomokuGUI:
         self.model = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=BOARD_SIZE).to(self.device)
         
         MODEL_PATH = 'checkpoint/gomoku_policy_value_net.pth'
+        if model_idx >= 0:
+            MODEL_PATH = f'checkpoint/gomoku_policy_value_net_{model_idx}.pth'
         if os.path.exists(MODEL_PATH):
             self.model.load_state_dict(torch.load(MODEL_PATH, map_location=self.device))
             print("Loaded trained model successfully.")
@@ -252,7 +254,14 @@ class GomokuGUI:
                             winner_msg = "Draw Game!"
                             game_over = True
 
-if __name__ == "__main__":
+def main():
+    from .pipeline import total_iterations
     # 初始化 8x8 棋盘，玩家先手(1)，AI后手(2)
-    gui = GomokuGUI(Game(BOARD_SIZE), ai_player=2)
+    gui = GomokuGUI(
+        Game(BOARD_SIZE), ai_player=2, 
+        model_idx=total_iterations
+    )
     gui.run()
+
+if __name__ == "__main__":
+    main()
