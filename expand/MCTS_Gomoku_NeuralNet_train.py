@@ -112,7 +112,7 @@ class GomokuDataset(Dataset):
 # ------------------------------------------------------------
 # Training Logic
 # ------------------------------------------------------------
-def train(model_index=0, data_index=0, num_epochs=100):
+def train(model_index=0, data_index=0, num_epochs=100, resume_model_index=None):
     # 配置路径
     data_file = f'train_data/self_play_data_{data_index}.jsonl'
     checkpoint_dir = 'checkpoint'
@@ -152,6 +152,15 @@ def train(model_index=0, data_index=0, num_epochs=100):
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path, map_location=device))
         print("Resuming from existing checkpoint.")
+    elif resume_model_index is not None:
+        resume_path = os.path.join(checkpoint_dir, f'gomoku_policy_value_net_{resume_model_index}.pth')
+        if os.path.exists(resume_path):
+            model.load_state_dict(torch.load(resume_path, map_location=device))
+            print(f"Resuming from model {resume_model_index}.")
+        else:
+            print(f"Resume model {resume_model_index} not found. Starting fresh.")
+    else:
+        print("No existing model found. Starting fresh.")
 
     num_epochs = num_epochs
     lr = 0.001

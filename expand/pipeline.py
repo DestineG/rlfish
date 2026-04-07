@@ -5,14 +5,15 @@ from .MCTS_Gomoku_NeuralNet_train import train as train_main
 from .MCTS_Gomoku_NeuralNet_CLI_self_play_test import evaluate
 
 total_iterations = 10
-# EPISODES = 200
-# MCTS_ITERS = 2000
-# num_epochs = 200
-# eval_games = 50
-EPISODES = 8
-MCTS_ITERS = 100
-num_epochs = 20
-eval_games = 20
+EPISODES = 200
+MCTS_ITERS = 2000
+num_epochs = 200
+eval_games = 50
+
+# EPISODES = 8
+# MCTS_ITERS = 100
+# num_epochs = 20
+# eval_games = 20
 
 def run_pipeline():
     """
@@ -37,7 +38,10 @@ def run_pipeline():
         # 训练阶段
         # 读取刚产生的数据 data_i，训练出下一个模型 model_{i+1}
         print(f"--- Training Stage (Data {i} -> Model {i+1}) ---")
-        train_main(model_index=i+1, data_index=i, num_epochs=num_epochs)
+        train_main(
+            model_index=i+1, data_index=i,
+            num_epochs=num_epochs, resume_model_index=i
+        )
 
         # 测试阶段
         # 评估新模型 model_{i+1} 的性能
