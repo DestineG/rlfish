@@ -196,35 +196,76 @@ class SelfPlayCollector:
             "moves": game_history
         }
 
-def main(model_index=0, data_index=0, EPISODES=100, MCTS_ITERS=2000):
+import multiprocessing as mp
+
+# 单场游戏对局
+def _run_single_episode(episode_idx, model_path, device_str, board_size, iters, data_path):
+    """子进程执行的任务：下完一局并写入文件，同时打印对局信息"""
+    import time
+    start_time = time.time()
+    
+    device = torch.device(device_str)
+    # 局部初始化模型
+    model = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=board_size).to(device)
+    
+    if os.path.exists(model_path):
+        model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
+
+    collector = SelfPlayCollector(model, device, board_size=board_size, iters=iters)
+    game_result = collector.run_episode()
+    
+    # 准备打印信息
+    winner = game_result['winner']
+    total_moves = game_result['total_moves']
+    duration = time.time() - start_time
+    
+    winner_str = "Black (1)" if winner == 1 else "White (2)" if winner == 2 else "Draw"
+    
+    print(f"[Episode {episode_idx:3d}] Finished | Winner: {winner_str:9s} | Moves: {total_moves:3d} | Time: {duration:5.1f}s", flush=True)
+    
+    # 写入文件
+    with open(data_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(game_result) + "\n")
+    
+    return winner
+
+def main(model_index=0, data_index=0, EPISODES=100, MCTS_ITERS=2000, num_processes=8):
     BOARD_SIZE = 8
-    MCTS_ITERS = MCTS_ITERS
-    EPISODES = EPISODES
     DATA_PATH = f"train_data/self_play_data_{data_index}.jsonl"
     MODEL_PATH = f"checkpoint/gomoku_policy_value_net_{model_index}.pth"
     
     os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
     if os.path.exists(DATA_PATH):
         os.remove(DATA_PATH)
+
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"=== Multi-process Self-Play Start ===")
+    print(f"Workers: {num_processes} | Total Episodes: {EPISODES} | MCTS Iters: {MCTS_ITERS}")
+    print("-" * 70)
+
+    # 启动方法
+    try:
+        mp.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    model = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=BOARD_SIZE).to(device)
-    if os.path.exists(MODEL_PATH):
-        model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-        print(f"Loaded existing model.")
-    model.eval()
-
-    collector = SelfPlayCollector(model, device, board_size=BOARD_SIZE, iters=MCTS_ITERS)
-
-    for ep in range(EPISODES):
-        print(f"Episode {ep+1}/{EPISODES} starting...")
-        game_result = collector.run_episode()
+    with mp.Pool(processes=num_processes) as pool:
+        # 构建参数列表，加入 i 作为 episode_idx
+        args = [
+            (i + 1, MODEL_PATH, device_str, BOARD_SIZE, MCTS_ITERS, DATA_PATH) 
+            for i in range(EPISODES)
+        ]
         
-        with open(DATA_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(game_result) + "\n")
-        
-        print(f"Finished. Winner: {game_result['winner']}, Moves: {game_result['total_moves']}")
-
+        # 使用 starmap 提交任务
+        results = pool.starmap(_run_single_episode, args)
+    
+    # 统计
+    b_wins = results.count(1)
+    w_wins = results.count(2)
+    draws = results.count(0)
+    
+    print("-" * 70)
+    print(f"Complete! | Black Wins: {b_wins} | White Wins: {w_wins} | Draws: {draws}")
 # if __name__ == "__main__":
 #     main()

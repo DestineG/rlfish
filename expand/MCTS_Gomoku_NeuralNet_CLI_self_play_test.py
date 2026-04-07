@@ -207,51 +207,83 @@ class ModelEvaluator:
         else:
             return 1 if winner == 2 else 2
 
-def evaluate(model_idx_1, model_idx_2, num_games=20, iters=400):
-    BOARD_SIZE = 8
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+import time
+import multiprocessing as mp
+
+# 单场对战
+def _run_single_game(game_idx, model_idx_1, model_idx_2, board_size, iters, m1_starts, device_str):
+    start_t = time.time()
+    device = torch.device(device_str)
     
-    # 1. 加载模型 1
+    # 加载模型
     path_1 = f"checkpoint/gomoku_policy_value_net_{model_idx_1}.pth"
-    model_1 = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=BOARD_SIZE).to(device)
+    model_1 = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=board_size).to(device)
     model_1.load_state_dict(torch.load(path_1, map_location=device))
     model_1.eval()
 
-    # 2. 加载模型 2
     path_2 = f"checkpoint/gomoku_policy_value_net_{model_idx_2}.pth"
-    model_2 = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=BOARD_SIZE).to(device)
+    model_2 = PolicyValueNet(input_channels=4, num_res_blocks=3, board_size=board_size).to(device)
     model_2.load_state_dict(torch.load(path_2, map_location=device))
     model_2.eval()
 
-    evaluator = ModelEvaluator(model_1, model_2, device, board_size=BOARD_SIZE, iters=iters)
-
-    m1_wins = 0
-    m2_wins = 0
-    draws = 0
-
-    print(f"Starting Evaluation: Model {model_idx_1} vs Model {model_idx_2}")
+    evaluator = ModelEvaluator(model_1, model_2, device, board_size=board_size, iters=iters)
     
-    for i in range(num_games):
-        # 轮流交替先手以示公平
-        m1_starts = (i % 2 == 0)
-        res = evaluator.play_game(m1_starts=m1_starts)
-        
-        if res == 1:
-            m1_wins += 1
-            winner_tag = f"M{model_idx_1}"
-        elif res == 2:
-            m2_wins += 1
-            winner_tag = f"M{model_idx_2}"
-        else:
-            draws += 1
-            winner_tag = "Draw"
-            
-        print(f"Game {i+1}/{num_games} | Winner: {winner_tag} | (M1 Starts: {m1_starts})")
+    # 执行对战
+    res = evaluator.play_game(m1_starts=m1_starts)
+    
+    # 准备打印信息
+    duration = time.time() - start_t
+    m1_color = "Black" if m1_starts else "White"
+    
+    if res == 1:
+        winner_tag = f"M{model_idx_1}"
+    elif res == 2:
+        winner_tag = f"M{model_idx_2}"
+    else:
+        winner_tag = "Draw"
 
+    # 打印：[对局号] 胜者 | M1颜色 | 用时
+    print(f"[Game {game_idx:3d}] Winner: {winner_tag:7s} | Model_{model_idx_1} was {m1_color:5s} | Time: {duration:5.1f}s", flush=True)
+    
+    return res
+
+def evaluate(model_idx_1, model_idx_2, num_games=20, iters=400, num_processes=8):
+    BOARD_SIZE = 8
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    print("="*60)
+    print(f"EVALUATION: Model {model_idx_1} vs Model {model_idx_2}")
+    print(f"Settings: {num_games} games, MCTS iters={iters}, Workers={num_processes}")
+    print("="*60)
+
+    # 准备参数列表，增加 game_idx (i+1)
+    args = []
+    for i in range(num_games):
+        m1_starts = (i % 2 == 0) # 轮流先手
+        args.append((i + 1, model_idx_1, model_idx_2, BOARD_SIZE, iters, m1_starts, device_str))
+
+    # 使用进程池执行
+    # 沿用之前自我博弈生成数据阶段的 mp.set_start_method('spawn')
+    with mp.Pool(processes=num_processes) as pool:
+        results = pool.starmap(_run_single_game, args)
+
+    # 统计
+    m1_wins = results.count(1)
+    m2_wins = results.count(2)
+    draws = results.count(0)
+
+    print("="*60)
+    print(f"Evaluation Finished!")
+    print(f"Model {model_idx_1} Wins: {m1_wins}")
+    print(f"Model {model_idx_2} Wins: {m2_wins}")
+    print(f"Draws: {draws}")
+    
     win_rate = m1_wins / num_games
+    print(f"Model {model_idx_1} Win Rate: {win_rate:.2%}")
+    print("="*60)
     
     return win_rate
 
-# 使用示例:
-# if __name__ == "__main__":
-#     evaluate(model_idx_1=10, model_idx_2=9, num_games=10, iters=800)
+if __name__ == "__main__":
+    # 确保在 Windows 环境下正确运行
+    evaluate(model_idx_1=10, model_idx_2=9, num_games=10, iters=800, num_processes=5)

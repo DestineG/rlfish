@@ -1,15 +1,20 @@
 
 ==================== Starting Pipeline Iteration 0/10 ====================
 --- Self-Play Stage (Model 0 -> Data 0) ---
+=== Multi-process Self-Play Start ===
+Workers: 8 | Total Episodes: 8 | MCTS Iters: 100
+----------------------------------------------------------------------
+[Episode   7] Finished | Winner: White (2) | Moves:  28 | Time:  16.7s
+[Episode   4] Finished | Winner: White (2) | Moves:  34 | Time:  18.7s
+[Episode   2] Finished | Winner: White (2) | Moves:  42 | Time:  21.2s
+[Episode   8] Finished | Winner: White (2) | Moves:  54 | Time:  22.2s
+[Episode   5] Finished | Winner: White (2) | Moves:  52 | Time:  24.4s
+[Episode   3] Finished | Winner: Black (1) | Moves:  49 | Time:  24.8s
+[Episode   1] Finished | Winner: Draw      | Moves:  64 | Time:  25.3s
+[Episode   6] Finished | Winner: Draw      | Moves:  64 | Time:  25.9s
+----------------------------------------------------------------------
+Complete! | Black Wins: 1 | White Wins: 5 | Draws: 2
+--- Training Stage (Data 0 -> Model 1) ---
+Loaded 387 training samples.
+Train: 348, Val: 39
 Using device: cuda
-Episode 1/50 starting...
-Finished. Winner: 1, Moves: 33
-Episode 2/50 starting...
-Finished. Winner: 1, Moves: 29
-Episode 3/50 starting...
-Finished. Winner: 1, Moves: 59
-Episode 4/50 starting...
-Finished. Winner: 1, Moves: 19
-Episode 5/50 starting...
-Finished. Winner: 1, Moves: 11
-Episode 6/50 starting...
