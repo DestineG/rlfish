@@ -112,7 +112,11 @@ class GomokuDataset(Dataset):
 # ------------------------------------------------------------
 # Training Logic
 # ------------------------------------------------------------
-def train(model_index=0, data_index=0, num_epochs=100, resume_model_index=None):
+def train(
+        model_index=0, data_index=0,
+        num_epochs=100, resume_model_index=None,
+        wandb_run=None
+):
     # 配置路径
     data_file = f'train_data/self_play_data_{data_index}.jsonl'
     checkpoint_dir = 'checkpoint'
@@ -149,10 +153,7 @@ def train(model_index=0, data_index=0, num_epochs=100, resume_model_index=None):
     model = PolicyValueNet(num_res_blocks=3).to(device)
     
     # 如果已有模型则加载
-    if os.path.exists(model_path):
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        print("Resuming from existing checkpoint.")
-    elif resume_model_index is not None:
+    if resume_model_index is not None:
         resume_path = os.path.join(checkpoint_dir, f'gomoku_policy_value_net_{resume_model_index}.pth')
         if os.path.exists(resume_path):
             model.load_state_dict(torch.load(resume_path, map_location=device))
@@ -225,6 +226,14 @@ def train(model_index=0, data_index=0, num_epochs=100, resume_model_index=None):
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{num_epochs} | Step {global_step} | Val P-Loss: {avg_val_p:.4f} | LR: {scheduler.get_last_lr()[0]:.6f}")
+    
+    if wandb_run is not None:
+        wandb_run.log({
+            "train_val/train_final_policy_loss": history['train_policy'][-1] if history['train_policy'] else None,
+            "train_val/train_final_value_loss": history['train_value'][-1] if history['train_value'] else None,
+            "train_val/val_final_policy_loss": history['val_policy'][-1] if history['val_policy'] else None,
+            "train_val/val_final_value_loss": history['val_value'][-1] if history['val_value'] else None,
+        })
 
     # 保存与绘图
     torch.save(model.state_dict(), model_path)

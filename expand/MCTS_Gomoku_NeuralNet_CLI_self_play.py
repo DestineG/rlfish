@@ -230,7 +230,11 @@ def _run_single_episode(episode_idx, model_path, device_str, board_size, iters, 
     
     return winner
 
-def main(model_index=0, data_index=0, EPISODES=100, MCTS_ITERS=2000, num_processes=8):
+def main(
+        model_index=0, data_index=0,
+        EPISODES=100, MCTS_ITERS=2000,
+        num_processes=8, wandb_run=None
+):
     BOARD_SIZE = 8
     DATA_PATH = f"train_data/self_play_data_{data_index}.jsonl"
     MODEL_PATH = f"checkpoint/gomoku_policy_value_net_{model_index}.pth"
@@ -264,6 +268,13 @@ def main(model_index=0, data_index=0, EPISODES=100, MCTS_ITERS=2000, num_process
     b_wins = results.count(1)
     w_wins = results.count(2)
     draws = results.count(0)
+    if wandb_run is not None:
+        wandb_run.log({
+            "self_play/black_wins": b_wins,
+            "self_play/white_wins": w_wins,
+            "self_play/draws": draws,
+            "self_play/total_steps": b_wins + w_wins + draws
+        })
     
     print("-" * 70)
     print(f"Complete! | Black Wins: {b_wins} | White Wins: {w_wins} | Draws: {draws}")

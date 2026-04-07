@@ -247,7 +247,11 @@ def _run_single_game(game_idx, model_idx_1, model_idx_2, board_size, iters, m1_s
     
     return res
 
-def evaluate(model_idx_1, model_idx_2, num_games=20, iters=400, num_processes=8):
+def evaluate(
+        model_idx_1, model_idx_2,
+        num_games=20, iters=400,
+        num_processes=8, wandb_run=None
+):
     BOARD_SIZE = 8
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -281,6 +285,13 @@ def evaluate(model_idx_1, model_idx_2, num_games=20, iters=400, num_processes=8)
     win_rate = m1_wins / num_games
     print(f"Model {model_idx_1} Win Rate: {win_rate:.2%}")
     print("="*60)
+
+    if wandb_run is not None:
+        wandb_run.log({
+            "eval/model_1_wins": m1_wins,
+            "eval/model_2_wins": m2_wins,
+            "eval/draws": draws,
+        })
     
     return win_rate
 
